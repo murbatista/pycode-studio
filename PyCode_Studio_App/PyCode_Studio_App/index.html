@@ -1,0 +1,1618 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PyCode Studio - IDE Python Educacional Estilo VS Code</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter & Fira Code -->
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        vscode: {
+                            bg: '#1e1e1e',
+                            sidebar: '#252526',
+                            activity: '#333333',
+                            editor: '#1e1e1e',
+                            line: '#858585',
+                            tabActive: '#1e1e1e',
+                            tabInactive: '#2d2d2d',
+                            terminal: '#181818',
+                            blue: '#007acc',
+                            accent: '#0098ff',
+                            border: '#3c3c3c',
+                            text: '#cccccc',
+                            keyword: '#569cd6',
+                            string: '#ce9178',
+                            comment: '#6a9955',
+                            func: '#dcdcaa'
+                        }
+                    },
+                    fontFamily: {
+                        mono: ['Fira Code', 'monospace'],
+                        sans: ['Inter', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* Estilização Scrollbar estilo VS Code */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e1e1e;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #424242;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4f4f4f;
+        }
+
+        .code-area { tab-size: 4; caret-color: #aeafad; white-space: pre; word-wrap: normal; }
+        #monaco-editor, #monaco-editor * { user-select: text; }
+        #monaco-editor { width: 100%; min-height: 0; }
+        .doc-result-card { background:#252526; border:1px solid #3c3c3c; border-radius:.5rem; padding:1rem; }
+        .doc-result-card:hover { border-color:#007acc; }
+        .voice-action { background:#333; border:1px solid #444; border-radius:.375rem; padding:.55rem .75rem; font-size:.75rem; }
+        .voice-action:hover { background:#444; }
+
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .mic-active {
+            animation: pulse-red 1.5s infinite;
+        }
+    </style>
+</head>
+<body class="bg-vscode-bg text-vscode-text font-sans h-screen flex flex-col overflow-hidden select-none">
+
+    <!-- Header Navigation (VS Code Top Bar) -->
+    <header class="relative z-40 h-9 bg-vscode-sidebar border-b border-vscode-border flex items-center justify-between px-3 text-xs">
+        <div class="flex items-center space-x-4">
+            <div class="flex items-center space-x-2 font-semibold text-vscode-accent">
+                <i class="fab fa-python text-lg text-yellow-400"></i>
+                <span class="tracking-wide">PyCode Studio IDE</span>
+            </div>
+            <div class="hidden md:flex space-x-3 text-gray-400">
+                <button onclick="toggleFileMenu()" class="hover:text-white transition">Arquivo ▾</button>
+                <button onclick="setActiveTab('editor')" class="hover:text-white transition">Editar</button>
+                <button onclick="setActiveTab('docs')" class="hover:text-white transition">Documentação</button>
+                <button onclick="setActiveTab('voice')" class="hover:text-white transition">Voz</button>
+                <button onclick="setActiveTab('quiz')" class="hover:text-white transition">Quizz de alternativa</button>
+                <button onclick="setActiveTab('quiz-write')" class="hover:text-white transition">Quizz de escrita</button>
+            </div>
+        </div>
+        <div class="flex items-center space-x-3 text-gray-400">
+            <span class="bg-vscode-activity px-2.5 py-0.5 rounded text-[11px] text-green-400 border border-green-800 flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Simulador Python
+            </span>
+            <button onclick="runPythonCode()" class="bg-green-700 hover:bg-green-600 text-white px-3 py-1 rounded text-xs flex items-center gap-1.5 transition font-medium shadow-sm">
+                <i class="fas fa-play text-[10px]"></i> Executar (Ctrl+Enter)
+            </button>
+        </div>
+    </header>
+
+    <div id="file-menu" class="hidden absolute top-9 left-40 z-50 bg-vscode-sidebar border border-vscode-border shadow-xl rounded p-2 text-xs space-y-1">
+        <button onclick="newUserFile()" class="block w-full text-left px-3 py-2 hover:bg-vscode-activity">Novo arquivo Python</button>
+        <button onclick="saveCurrentFile()" class="block w-full text-left px-3 py-2 hover:bg-vscode-activity">Salvar arquivo / Salvar como…</button>
+        <button onclick="exportProject()" class="block w-full text-left px-3 py-2 hover:bg-vscode-activity">Exportar projeto completo (.json)</button>
+        <button onclick="document.getElementById('import-file-input').click()" class="block w-full text-left px-3 py-2 hover:bg-vscode-activity">Abrir/importar arquivo…</button>
+        <input id="import-file-input" type="file" class="hidden" onchange="importUserFile(event)">
+    </div>
+
+    <!-- App Body Layout -->
+    <div class="flex-1 flex overflow-hidden">
+        
+        <!-- Activity Bar (Left Vertical Toolbar) -->
+        <nav class="w-12 bg-vscode-activity border-r border-vscode-border flex flex-col items-center py-2 justify-between shrink-0">
+            <div class="flex flex-col space-y-4 w-full">
+                <button onclick="setActiveTab('editor')" id="nav-editor" title="Editor de Código" class="nav-btn text-vscode-accent border-l-2 border-vscode-blue p-2.5 flex justify-center hover:text-white transition">
+                    <i class="fas fa-code text-lg"></i>
+                </button>
+                <button onclick="setActiveTab('docs')" id="nav-docs" title="Dicas e Documentação Python" class="nav-btn text-gray-500 p-2.5 flex justify-center hover:text-white transition">
+                    <i class="fas fa-book-open text-lg"></i>
+                </button>
+                <button onclick="setActiveTab('videos')" id="nav-videos" title="Aulas com IA & Voz" class="nav-btn text-gray-500 p-2.5 flex justify-center hover:text-white transition">
+                    <i class="fas fa-video text-lg"></i>
+                </button>
+                <button onclick="setActiveTab('quiz')" id="nav-quiz" title="Quiz de Múltipla Escolha (+300 Questões)" class="nav-btn text-gray-500 p-2.5 flex justify-center hover:text-white transition">
+                    <i class="fas fa-list-check text-lg"></i>
+                </button>
+                <button onclick="setActiveTab('quiz-write')" id="nav-quiz-write" title="Desafio de Escrita de Código (+300 Desafios)" class="nav-btn text-gray-500 p-2.5 flex justify-center hover:text-white transition">
+                    <i class="fas fa-keyboard text-lg"></i>
+                </button>
+                <button onclick="setActiveTab('voice')" id="nav-voice" title="Programação por Voz" class="nav-btn text-gray-500 p-2.5 flex justify-center hover:text-white transition">
+                    <i class="fas fa-microphone text-lg"></i>
+                </button>
+            </div>
+            <div class="flex flex-col space-y-3">
+                <button title="Ajuda & Atalhos" onclick="setActiveTab('docs')" class="text-gray-500 hover:text-white p-2">
+                    <i class="fas fa-question-circle text-lg"></i>
+                </button>
+            </div>
+        </nav>
+
+        <!-- Main Viewport Area -->
+        <main class="flex-1 flex overflow-hidden bg-vscode-bg relative">
+
+            <!-- 1. TAB: EDITOR DE CÓDIGO (VS CODE LIKE) -->
+            <section id="tab-editor" class="tab-content flex-1 flex flex-col h-full">
+                <div class="flex h-full">
+                    <!-- File Explorer Sidebar -->
+                    <aside class="w-56 bg-vscode-sidebar border-r border-vscode-border hidden md:flex flex-col text-xs">
+                        <div class="p-2.5 font-bold uppercase tracking-wider text-gray-400 flex justify-between items-center border-b border-vscode-border">
+                            <span>Explorador</span>
+                            <div class="flex gap-2">
+                                <button onclick="newUserFile()" title="Novo arquivo" class="hover:text-white"><i class="fas fa-file-circle-plus"></i></button>
+                                <button onclick="removeCurrentFile()" title="Remover arquivo" class="hover:text-red-400"><i class="fas fa-trash"></i></button>
+                            </div>
+                        </div>
+                        <div class="p-2 text-gray-300 font-semibold flex items-center gap-1.5">
+                            <i class="fas fa-chevron-down text-[10px]"></i> MEU-PROJETO
+                        </div>
+                        <div class="flex flex-col space-y-0.5">
+                            <div onclick="switchFile('main.py')" id="file-main" class="file-item px-6 py-1.5 bg-vscode-bg text-white flex items-center gap-2 cursor-pointer border-l-2 border-vscode-blue">
+                                <i class="fab fa-python text-yellow-400"></i> main.py
+                            </div>
+                            <div onclick="switchFile('exemplos.py')" id="file-exemplos" class="file-item px-6 py-1.5 text-gray-400 hover:bg-vscode-activity flex items-center gap-2 cursor-pointer">
+                                <i class="fab fa-python text-blue-400"></i> exemplos.py
+                            </div>
+                            <div onclick="switchFile('exercicios.py')" id="file-exercicios" class="file-item px-6 py-1.5 text-gray-400 hover:bg-vscode-activity flex items-center gap-2 cursor-pointer">
+                                <i class="fab fa-python text-green-400"></i> exercicios.py
+                            </div>
+                        </div>
+
+                    </aside>
+
+                    <!-- Code Editor & Terminal Split -->
+                    <div class="flex-1 flex flex-col h-full overflow-hidden">
+                        <!-- File Tabs -->
+                        <div class="h-9 bg-vscode-sidebar flex items-center border-b border-vscode-border overflow-x-auto text-xs">
+                            <div id="tab-file-title" class="bg-vscode-editor text-white px-4 py-2 border-t-2 border-vscode-blue flex items-center gap-2 min-w-[130px]">
+                                <i class="fab fa-python text-yellow-400"></i> <span id="current-filename">main.py</span>
+                            </div>
+                            <div class="ml-auto px-3 flex items-center space-x-2">
+                                <button onclick="checkPythonSyntax()" title="Verificar sintaxe" class="text-gray-400 hover:text-white"><i class="fas fa-spell-check"></i> <span class="hidden lg:inline">Sintaxe</span></button>
+                                <button onclick="runAutomatedChecks()" title="Executar testes automatizados do aplicativo" class="text-gray-400 hover:text-white"><i class="fas fa-vial"></i> <span class="hidden lg:inline">Testes</span></button>
+                                <button onclick="clearEditor()" title="Limpar Editor" class="text-gray-400 hover:text-white"><i class="fas fa-trash"></i></button>
+                                <button onclick="copyEditorCode()" title="Copiar Código" class="text-gray-400 hover:text-white"><i class="fas fa-copy"></i></button>
+                            </div>
+                        </div>
+
+                        <!-- Monaco (editor usado pelo VS Code) com fallback em textarea -->
+                        <div class="flex-1 flex relative font-mono text-sm overflow-hidden bg-vscode-editor min-h-0">
+                            <div id="line-numbers" class="w-12 bg-vscode-editor text-vscode-line text-right pr-3 py-3 select-none border-r border-vscode-border/30 text-xs">1</div>
+                            <div id="monaco-editor" class="hidden flex-1 h-full"></div>
+                            <textarea id="code-editor" oninput="updateLineNumbers(); virtualFiles[currentFile] = this.value" onkeydown="handleTab(event)" class="code-area flex-1 bg-transparent text-gray-200 p-3 outline-none resize-none font-mono text-sm leading-relaxed border-none w-full" spellcheck="false" aria-label="Editor Python"># Bem-vindo ao PyCode Studio!
+# Digite seu código Python abaixo e clique em Executar
+
+nome = "Desenvolvedor"
+print(f"Olá, {nome}! Bem-vindo à sua IDE Python.")
+
+for i in range(1, 4):
+    print(f"Contagem regressiva: {i}")
+
+print("Pronto para codificar!")</textarea>
+                        </div>
+
+                        <!-- Integrated Terminal Panel -->
+                        <div class="h-44 shrink-0 bg-vscode-terminal border-t border-vscode-border flex flex-col font-mono text-xs">
+                            <div class="bg-vscode-sidebar px-4 py-1.5 border-b border-vscode-border flex justify-between items-center text-gray-400 text-[11px]">
+                                <div class="flex space-x-4">
+                                    <span class="text-white border-b border-vscode-blue font-semibold pb-0.5">TERMINAL</span>
+                                </div>
+                                <div class="flex gap-3"><button onclick="stopTerminalProcess('terminal-output')" class="hover:text-red-300"><i class="fas fa-stop"></i> Parar</button><button onclick="clearTerminal()" class="hover:text-white"><i class="fas fa-ban"></i> Limpar Console</button></div>
+                            </div>
+                            <div id="terminal-output" class="flex-1 p-3 overflow-y-auto text-green-400 whitespace-pre-wrap">Terminal Python pronto. No aplicativo local, os programas são executados com o Python instalado no computador.</div>
+                            <form class="flex gap-2 border-t border-vscode-border p-2" onsubmit="event.preventDefault();sendTerminalInput('terminal-output','terminal-input')">
+                                <span class="text-green-400 self-center">&gt;</span><input id="terminal-input" autocomplete="off" class="flex-1 bg-transparent outline-none text-white" placeholder="Digite uma entrada para input() e pressione Enter..." aria-label="Entrada para o terminal Python"><button class="bg-vscode-activity px-3 py-1 rounded text-white" type="submit">Enviar</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2. TAB: DICAS E DOCUMENTAÇÃO PYTHON -->
+            <section id="tab-docs" class="tab-content flex-1 hidden p-6 overflow-y-auto bg-vscode-bg">
+                <div class="max-w-5xl mx-auto space-y-6">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-vscode-border pb-4">
+                        <div>
+                            <h2 class="text-2xl font-bold text-white flex items-center gap-2">
+                                <i class="fas fa-book-open text-vscode-accent"></i> Documentação Python
+                            </h2>
+                            <p class="text-gray-400 text-sm">Pesquise funções nativas, palavras-chave, operadores, métodos e estruturas da linguagem. Use “Inserir no Editor” para testar o exemplo.</p>
+                        </div>
+                        <div class="relative w-full md:w-64">
+                            <input type="text" id="docs-search" oninput="filterDocs()" onkeydown="if(event.key==='Enter') filterDocs()" placeholder="Buscar qualquer comando (ex.: type, append, pathlib)..." class="w-full bg-vscode-sidebar border border-vscode-border text-white text-xs rounded-lg px-3 py-2 pl-9 focus:outline-none focus:border-vscode-blue">
+                            <i class="fas fa-search absolute left-3 top-2.5 text-gray-400 text-xs"></i>
+                        </div>
+                    </div>
+
+                    <!-- Docs Grid Categories -->
+                    <div id="docs-search-results" class="space-y-3" aria-live="polite"><p class="text-sm text-gray-500">Digite um termo para pesquisar na referência Python.</p></div>
+                    <div id="docs-container" class="hidden grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- Card: print() -->
+                        <div class="doc-card bg-vscode-sidebar p-4 rounded-lg border border-vscode-border hover:border-vscode-blue transition">
+                            <div class="flex justify-between items-start mb-2">
+                                <h3 class="font-mono text-vscode-keyword text-base font-semibold">print(...)</h3>
+                                <span class="text-[10px] bg-blue-900/50 text-blue-300 px-2 py-0.5 rounded">Entrada/Saída</span>
+                            </div>
+                            <p class="text-xs text-gray-300 mb-3">Exibe uma mensagem ou valor no console de saída.</p>
+                            <pre class="bg-vscode-terminal p-2 rounded text-xs text-green-300 font-mono mb-3">print("Olá, Mundo!")
+print(f"Resultado: {10 + 20}")</pre>
+                            <button onclick="copyDocSnippet('print(&quot;Olá, Mundo!&quot;)')" class="text-xs text-vscode-accent hover:underline flex items-center gap-1">
+                                <i class="fas fa-code"></i> Inserir no Editor
+                            </button>
+                        </div>
+
+                        <!-- Card: Variáveis -->
+                        <div class="doc-card bg-vscode-sidebar p-4 rounded-lg border border-vscode-border hover:border-vscode-blue transition">
+                            <div class="flex justify-between items-start mb-2">
+                                <h3 class="font-mono text-vscode-keyword text-base font-semibold">Variáveis & Tipos</h3>
+                                <span class="text-[10px] bg-purple-900/50 text-purple-300 px-2 py-0.5 rounded">Básico</span>
+                            </div>
+                            <p class="text-xs text-gray-300 mb-3">Em Python não é necessário declarar tipo. O tipo é inferido automaticamente.</p>
+                            <pre class="bg-vscode-terminal p-2 rounded text-xs text-yellow-200 font-mono mb-3">idade = 25          # int
+preco = 19.99       # float
+nome = "Ana"        # str
+ativo = True        # bool</pre>
+                            <button onclick="copyDocSnippet('idade = 25\nnome = &quot;Ana&quot;\nprint(nome, idade)')" class="text-xs text-vscode-accent hover:underline flex items-center gap-1">
+                                <i class="fas fa-code"></i> Inserir no Editor
+                            </button>
+                        </div>
+
+                        <!-- Card: Estrutura IF / ELSE -->
+                        <div class="doc-card bg-vscode-sidebar p-4 rounded-lg border border-vscode-border hover:border-vscode-blue transition">
+                            <div class="flex justify-between items-start mb-2">
+                                <h3 class="font-mono text-vscode-keyword text-base font-semibold">if / elif / else</h3>
+                                <span class="text-[10px] bg-yellow-900/50 text-yellow-300 px-2 py-0.5 rounded">Controle de Fluxo</span>
+                            </div>
+                            <p class="text-xs text-gray-300 mb-3">Executa blocos de código com base em condições lógicas. Atenção à indentação!</p>
+                            <pre class="bg-vscode-terminal p-2 rounded text-xs text-orange-300 font-mono mb-3">nota = 8
+if nota >= 7:
+    print("Aprovado")
+else:
+    print("Reprovado")</pre>
+                            <button onclick="copyDocSnippet('nota = 8\nif nota >= 7:\n    print(&quot;Aprovado&quot;)')" class="text-xs text-vscode-accent hover:underline flex items-center gap-1">
+                                <i class="fas fa-code"></i> Inserir no Editor
+                            </button>
+                        </div>
+
+                        <!-- Card: Laço FOR -->
+                        <div class="doc-card bg-vscode-sidebar p-4 rounded-lg border border-vscode-border hover:border-vscode-blue transition">
+                            <div class="flex justify-between items-start mb-2">
+                                <h3 class="font-mono text-vscode-keyword text-base font-semibold">for i in range(...)</h3>
+                                <span class="text-[10px] bg-green-900/50 text-green-300 px-2 py-0.5 rounded">Repetição</span>
+                            </div>
+                            <p class="text-xs text-gray-300 mb-3">Itera sobre uma sequência de números ou elementos de uma lista.</p>
+                            <pre class="bg-vscode-terminal p-2 rounded text-xs text-cyan-300 font-mono mb-3">for i in range(5):
+    print(f"Número: {i}")</pre>
+                            <button onclick="copyDocSnippet('for i in range(5):\n    print(f&quot;Passo {i}&quot;)')" class="text-xs text-vscode-accent hover:underline flex items-center gap-1">
+                                <i class="fas fa-code"></i> Inserir no Editor
+                            </button>
+                        </div>
+
+                        <!-- Card: Listas -->
+                        <div class="doc-card bg-vscode-sidebar p-4 rounded-lg border border-vscode-border hover:border-vscode-blue transition">
+                            <div class="flex justify-between items-start mb-2">
+                                <h3 class="font-mono text-vscode-keyword text-base font-semibold">Listas [ ]</h3>
+                                <span class="text-[10px] bg-pink-900/50 text-pink-300 px-2 py-0.5 rounded">Estruturas de Dados</span>
+                            </div>
+                            <p class="text-xs text-gray-300 mb-3">Coleção ordenada e alterável de elementos.</p>
+                            <pre class="bg-vscode-terminal p-2 rounded text-xs text-pink-300 font-mono mb-3">frutas = ["maçã", "banana"]
+frutas.append("laranja")
+print(frutas[0]) # maçã</pre>
+                            <button onclick="copyDocSnippet('frutas = [&quot;maçã&quot;, &quot;banana&quot;]\nfrutas.append(&quot;uva&quot;)\nprint(frutas)')" class="text-xs text-vscode-accent hover:underline flex items-center gap-1">
+                                <i class="fas fa-code"></i> Inserir no Editor
+                            </button>
+                        </div>
+
+                        <!-- Card: Funções -->
+                        <div class="doc-card bg-vscode-sidebar p-4 rounded-lg border border-vscode-border hover:border-vscode-blue transition">
+                            <div class="flex justify-between items-start mb-2">
+                                <h3 class="font-mono text-vscode-keyword text-base font-semibold">def funcao(...)</h3>
+                                <span class="text-[10px] bg-indigo-900/50 text-indigo-300 px-2 py-0.5 rounded">Modularização</span>
+                            </div>
+                            <p class="text-xs text-gray-300 mb-3">Define um bloco de código reutilizável que pode aceitar parâmetros e retornar valores.</p>
+                            <pre class="bg-vscode-terminal p-2 rounded text-xs text-indigo-300 font-mono mb-3">def somar(a, b):
+    return a + b
+
+resultado = somar(5, 10)</pre>
+                            <button onclick="copyDocSnippet('def saudar(nome):\n    return f&quot;Olá, {nome}&quot;\n\nprint(saudar(&quot;Python&quot;))')" class="text-xs text-vscode-accent hover:underline flex items-center gap-1">
+                                <i class="fas fa-code"></i> Inserir no Editor
+                            </button>
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-4">A linguagem Python possui bibliotecas e recursos externos demais para caber literalmente em uma lista finita. Esta referência reúne comandos centrais da linguagem e exemplos pesquisáveis.</p>
+                </div>
+            </section>
+
+            <!-- 3. TAB: EXPLICAÇÕES DE PYTHON COM LEITURA POR VOZ -->
+            <section id="tab-videos" class="tab-content flex-1 hidden p-6 overflow-y-auto bg-vscode-bg">
+                <div class="max-w-5xl mx-auto space-y-6">
+                    <div class="border-b border-vscode-border pb-4">
+                        <h2 class="text-2xl font-bold text-white flex items-center gap-2"><i class="fas fa-brain text-vscode-accent"></i> Videoaulas e Explicações com IA</h2>
+                        <p class="text-gray-400 text-sm mt-2">Não há vídeos gravados nesta aba. Pesquise qualquer função, palavra-chave, método ou módulo Python, leia a explicação e peça ao navegador para narrá-la.</p>
+                    </div>
+                    <div class="bg-vscode-sidebar border border-vscode-border rounded-xl p-4 space-y-3">
+                        <label for="video-search" class="block text-xs font-semibold text-gray-300">Pesquisar na referência Python</label>
+                        <div class="flex flex-col sm:flex-row gap-2">
+                            <input id="video-search" oninput="searchPythonReference('video-search','video-reference-results')" onkeydown="if(event.key==='Enter') searchPythonReference('video-search','video-reference-results')" type="search" placeholder="Ex.: type, input, list.append, asyncio, exceções..." class="flex-1 bg-vscode-terminal border border-vscode-border text-white text-sm rounded-lg px-3 py-3 focus:outline-none focus:border-vscode-blue">
+                            <button onclick="searchPythonReference('video-search','video-reference-results')" class="bg-vscode-blue hover:bg-vscode-accent text-white px-4 py-2 rounded-lg text-sm"><i class="fas fa-search mr-1"></i> Pesquisar</button>
+                        </div>
+                        <p class="text-xs text-gray-500">A pesquisa inclui funções nativas, palavras-chave, métodos comuns e módulos da biblioteca padrão. A referência oficial contém os detalhes completos e atualizados.</p>
+                    </div>
+                    <div id="video-reference-results" class="space-y-3" aria-live="polite"><p class="text-sm text-gray-500">Digite um termo para encontrar uma explicação.</p></div>
+                    <div class="bg-vscode-sidebar border border-vscode-blue rounded-xl p-4 space-y-3">
+                        <div class="flex flex-wrap items-center justify-between gap-2"><div><h3 class="font-semibold text-white"><i class="fas fa-robot text-vscode-accent mr-2"></i>Tutor de Python com IA</h3><p class="text-xs text-gray-400 mt-1">Explique o código, entenda erros e receba sugestões linha a linha.</p></div><span id="ai-status" class="text-xs text-yellow-300">Verificando conexão local…</span></div>
+                        <label for="ai-question" class="block text-xs text-gray-300">O que você quer entender?</label>
+                        <textarea id="ai-question" rows="2" class="w-full bg-vscode-terminal border border-vscode-border text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-vscode-blue" placeholder="Ex.: explique este código linha por linha, encontre o erro ou mostre uma forma mais simples."></textarea>
+                        <label class="flex items-start gap-2 text-xs text-gray-400"><input id="ai-send-code" type="checkbox" checked class="mt-0.5"> Enviar o código atual e o último erro ao tutor para contextualizar a resposta.</label>
+                        <div class="flex flex-wrap gap-2"><button onclick="askPythonTutor('explain')" class="bg-vscode-blue hover:bg-vscode-accent text-white px-3 py-2 rounded text-xs"><i class="fas fa-list-ol mr-1"></i> Explicar linha a linha</button><button onclick="askPythonTutor('debug')" class="bg-vscode-activity hover:bg-vscode-border text-white px-3 py-2 rounded text-xs"><i class="fas fa-bug mr-1"></i> Encontrar erros</button><button onclick="askPythonTutor('question')" class="bg-vscode-activity hover:bg-vscode-border text-white px-3 py-2 rounded text-xs"><i class="fas fa-comment-dots mr-1"></i> Perguntar</button><button onclick="speakTutorAnswer()" class="bg-vscode-activity hover:bg-vscode-border text-white px-3 py-2 rounded text-xs"><i class="fas fa-volume-up mr-1"></i> Ler resposta</button></div>
+                        <div id="ai-tutor-output" class="hidden bg-[#181818] border border-vscode-border rounded-lg p-3 text-sm text-gray-200 whitespace-pre-wrap" aria-live="polite"></div>
+                        <p class="text-[11px] text-gray-500">Privacidade: se você configurar uma chave de API, o texto da pergunta e, quando marcado, o código/erro serão enviados ao provedor de IA. A chave fica no arquivo local .env, nunca no HTML.</p>
+                    </div>
+                    <div class="bg-vscode-sidebar border border-vscode-border rounded-xl p-4 flex flex-wrap gap-3 items-center justify-between">
+                        <div><h3 class="font-semibold text-white text-sm">Leitura em voz alta</h3><p class="text-xs text-gray-400 mt-1">Usa a síntese de voz disponível no navegador. A voz e a disponibilidade dependem do sistema.</p></div>
+                        <div class="flex gap-2"><button onclick="stopExplanationSpeech()" class="voice-action text-white"><i class="fas fa-stop mr-1"></i> Parar leitura</button><button onclick="openOfficialPythonDocs()" class="voice-action text-white"><i class="fas fa-book-open mr-1"></i> Documentação oficial</button></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 4. TAB: QUIZ DE MÚLTIPLA ESCOLHA -->
+            <section id="tab-quiz" class="tab-content flex-1 hidden p-6 overflow-y-auto bg-vscode-bg">
+                <div class="max-w-3xl mx-auto space-y-6">
+                    <div class="flex justify-between items-center border-b border-vscode-border pb-4">
+                        <div>
+                            <h2 class="text-2xl font-bold text-white flex items-center gap-2">
+                                <i class="fas fa-list-check text-green-400"></i> Quizz de alternativa
+                            </h2>
+                            <p class="text-gray-400 text-sm">Perguntas procedurais geradas dinamicamente cobrindo toda a sintaxe Python.</p>
+                        </div>
+                        <div class="bg-vscode-sidebar px-4 py-2 rounded-lg border border-vscode-border text-xs flex items-center gap-3">
+                            <span class="text-blue-400"><i class="fas fa-hashtag"></i> Questão: <strong id="quiz-total-count">1</strong></span>
+                            <span class="text-yellow-400"><i class="fas fa-star"></i> Pontos: <strong id="quiz-score">0</strong></span>
+                            <span class="text-orange-400"><i class="fas fa-fire"></i> Streak: <strong id="quiz-streak">0</strong></span>
+                        </div>
+                    </div>
+
+                    <!-- Quiz Question Card -->
+                    <div class="bg-vscode-sidebar p-6 rounded-xl border border-vscode-border space-y-4">
+                        <div class="flex justify-between text-xs text-gray-400 border-b border-vscode-border/50 pb-2">
+                            <span id="quiz-category">Categoria: Sintaxe Básica</span>
+                            <span id="quiz-difficulty" class="text-green-400">Nível: Iniciante</span>
+                        </div>
+
+                        <h3 id="quiz-question-text" class="text-base font-medium text-white">
+                            Qual é a saída correta do seguinte código em Python?
+                        </h3>
+
+                        <pre id="quiz-code-block" class="bg-vscode-terminal p-3 rounded font-mono text-xs text-green-300 border border-vscode-border">
+x = 5
+y = 2
+print(x // y)</pre>
+
+                        <!-- Alternatives Container -->
+                        <div id="quiz-options-container" class="space-y-2 pt-2">
+                            <!-- Options rendered dynamically -->
+                        </div>
+
+                        <div id="quiz-feedback" class="p-3 rounded text-xs hidden"></div>
+
+                        <div class="flex justify-between items-center pt-2">
+                            <div class="ml-auto flex flex-wrap gap-2">
+                                <button id="quiz-try-btn" onclick="retryQuizQuestion()" class="hidden bg-vscode-activity hover:bg-vscode-border text-white px-4 py-2 rounded text-xs">Tentar novamente</button>
+                                <button id="quiz-skip-btn" onclick="skipQuizQuestion()" disabled class="bg-vscode-activity hover:bg-vscode-border disabled:opacity-40 text-white px-4 py-2 rounded text-xs">Pular questão</button>
+                                <button id="quiz-next-btn" onclick="nextQuizQuestion()" disabled class="bg-vscode-blue hover:bg-vscode-accent disabled:opacity-40 text-white px-4 py-2 rounded text-xs font-semibold">Próxima</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 5. TAB: QUIZ DE ESCRITA / DESAFIO PRÁTICO -->
+            <section id="tab-quiz-write" class="tab-content flex-1 hidden p-6 overflow-y-auto bg-vscode-bg">
+                <div class="max-w-3xl mx-auto space-y-6">
+                    <div class="flex justify-between items-center border-b border-vscode-border pb-4">
+                        <div>
+                            <h2 class="text-2xl font-bold text-white flex items-center gap-2">
+                                <i class="fas fa-pen-to-square text-purple-400"></i> Quizz de escrita
+                            </h2>
+                            <p class="text-gray-400 text-sm">Escreva comandos Python precisos gerados procedurarmente para resolver os problemas.</p>
+                        </div>
+                        <div class="bg-vscode-sidebar px-4 py-2 rounded-lg border border-vscode-border text-xs flex items-center gap-3">
+                            <span class="text-purple-400"><i class="fas fa-trophy"></i> Concluídos: <strong id="write-completed-count">0</strong></span>
+                        </div>
+                    </div>
+
+                    <div class="bg-vscode-sidebar p-6 rounded-xl border border-vscode-border space-y-4">
+                        <div class="bg-purple-900/30 border border-purple-800 p-3 rounded text-xs text-purple-300">
+                            <strong>Desafio Prático #<span id="write-challenge-id">1</span>:</strong> <span id="write-challenge-desc">Crie uma instrução que exiba a frase "Python é Incrível" na tela.</span>
+                        </div>
+
+                        <div class="space-y-2">
+                            <label class="text-xs text-gray-300 font-medium block">Sua resposta em código Python:</label>
+                            <input type="text" id="write-quiz-input" placeholder="Digite o código aqui..." class="w-full bg-vscode-terminal border border-vscode-border text-yellow-300 font-mono text-sm px-4 py-2.5 rounded focus:outline-none focus:border-vscode-blue">
+                        </div>
+
+                        <div id="write-quiz-feedback" class="p-3 rounded text-xs hidden"></div>
+
+                        <div class="flex justify-between items-center pt-2">
+                            <button onclick="showWriteHint()" class="text-xs text-gray-400 hover:text-white flex items-center gap-1">
+                                <i class="fas fa-lightbulb text-yellow-400"></i> Ver Dica
+                            </button>
+                            <div class="space-x-2">
+                                <button onclick="checkWriteAnswer()" class="bg-green-700 hover:bg-green-600 text-white px-4 py-2 rounded text-xs font-semibold">
+                                    Verificar Resposta
+                                </button>
+                                <button id="write-try-btn" onclick="retryWriteChallenge()" class="hidden bg-vscode-activity hover:bg-vscode-border text-white px-4 py-2 rounded text-xs">Tentar novamente</button>
+                                <button id="write-skip-btn" onclick="skipWriteChallenge()" class="bg-vscode-activity hover:bg-vscode-border text-white px-4 py-2 rounded text-xs">Pular desafio</button>
+                                <button id="write-next-btn" onclick="nextWriteChallenge()" disabled class="bg-vscode-blue hover:bg-vscode-accent disabled:opacity-40 text-white px-4 py-2 rounded text-xs font-semibold">Próximo</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 6. TAB: PROGRAMAÇÃO POR VOZ -->
+            <section id="tab-voice" class="tab-content flex-1 hidden p-5 overflow-y-auto bg-vscode-bg">
+                <div class="max-w-6xl mx-auto space-y-4">
+                    <div class="border-b border-vscode-border pb-4 flex flex-col md:flex-row md:justify-between md:items-center gap-3">
+                        <div><h2 class="text-2xl font-bold text-white flex items-center gap-2"><i class="fas fa-microphone text-red-400"></i> Programação por Voz</h2><p class="text-gray-400 text-sm mt-1">Fale em português ou inglês, revise o código e execute sem sair desta aba.</p></div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <label for="voice-language" class="text-xs text-gray-300">Idioma falado</label>
+                            <select id="voice-language" onchange="changeVoiceLanguage()" class="bg-vscode-sidebar border border-vscode-border text-white text-xs rounded px-3 py-2"><option value="pt-BR">Português (Brasil)</option><option value="en-US">English (US)</option><option value="en-GB">English (UK)</option></select>
+                            <button id="mic-toggle-btn" onclick="toggleVoiceCoding()" class="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg font-semibold text-xs flex items-center gap-2"><i class="fas fa-microphone"></i><span id="mic-btn-text">Ativar microfone</span></button>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <div class="bg-vscode-sidebar p-4 rounded-xl border border-vscode-border space-y-3">
+                            <div class="flex justify-between items-center"><h3 class="text-xs uppercase font-bold text-gray-300">Transcrição</h3><span id="voice-status-text" class="text-xs text-gray-400">Desativado</span></div>
+                            <div id="voice-transcript" class="h-20 bg-vscode-terminal p-3 rounded text-sm text-yellow-300 font-mono overflow-y-auto border border-vscode-border">Escolha o idioma, permita o microfone e comece a falar.</div>
+                            <h3 class="text-xs uppercase font-bold text-gray-300">Código reconhecido</h3>
+                            <pre id="voice-code-output" class="bg-vscode-terminal p-3 rounded font-mono text-sm text-green-300 border border-vscode-border min-h-[190px] whitespace-pre-wrap overflow-auto"># O código Python gerado por voz aparecerá aqui...</pre>
+                            <div class="flex flex-wrap gap-2">
+                                <button onclick="voiceInsert('(')" class="voice-action text-white">( Abrir parênteses</button><button onclick="voiceInsert(')')" class="voice-action text-white">) Fechar parênteses</button><button onclick="voiceInsert('&quot;')" class="voice-action text-white">" Aspas</button><button onclick="voiceInsert('\n')" class="voice-action text-white">↵ Nova linha</button><button onclick="voiceDeleteWord()" class="voice-action text-white">⌫ Apagar palavra</button><button onclick="voiceDeleteLine()" class="voice-action text-white">Apagar linha</button><button onclick="voiceClear()" class="voice-action text-white">Limpar código</button>
+                            </div>
+                            <div class="flex flex-wrap gap-2 pt-1"><button onclick="transferVoiceToEditor()" class="bg-vscode-activity hover:bg-vscode-border text-white px-3 py-2 rounded text-xs"><i class="fas fa-file-import mr-1"></i> Enviar ao editor</button><button onclick="runVoiceCode()" class="bg-green-700 hover:bg-green-600 text-white px-3 py-2 rounded text-xs"><i class="fas fa-play mr-1"></i> Executar aqui</button></div>
+                        </div>
+                        <div class="bg-vscode-sidebar p-4 rounded-xl border border-vscode-border flex flex-col min-h-[440px]">
+                            <div class="flex justify-between items-center border-b border-vscode-border pb-2"><h3 class="text-xs uppercase font-bold text-gray-300"><i class="fas fa-terminal mr-1"></i> Terminal da Voz</h3><div class="flex gap-3"><button onclick="stopTerminalProcess('voice-terminal-output')" class="text-xs text-red-300 hover:text-red-200"><i class="fas fa-stop mr-1"></i> Parar</button><button onclick="clearVoiceTerminal()" class="text-xs text-gray-400 hover:text-white"><i class="fas fa-eraser mr-1"></i> Limpar</button></div></div>
+                            <pre id="voice-terminal-output" class="flex-1 min-h-[250px] overflow-auto whitespace-pre-wrap bg-[#181818] p-3 mt-3 rounded text-xs font-mono text-green-300">Terminal da voz pronto. O resultado da execução aparecerá aqui.</pre>
+                            <form class="flex gap-2 mt-2" onsubmit="event.preventDefault();sendTerminalInput('voice-terminal-output','voice-terminal-input')"><span class="text-green-400 self-center">&gt;</span><input id="voice-terminal-input" autocomplete="off" class="flex-1 bg-[#181818] border border-vscode-border rounded px-2 py-1 text-white text-xs outline-none" placeholder="Responder ao input() e pressionar Enter"><button type="submit" class="bg-vscode-activity px-3 py-1 rounded text-white text-xs">Enviar</button></form>
+                            <p class="text-[11px] text-gray-500 mt-2">No aplicativo local, este terminal aceita respostas a input(). O reconhecimento de voz depende do navegador e da permissão do microfone. Revise o código antes de executar.</p>
+                        </div>
+                    </div>
+                    <details class="bg-vscode-sidebar border border-vscode-border rounded-xl p-4"><summary class="cursor-pointer text-sm font-semibold text-white">Comandos de voz aceitos (português e inglês)</summary><div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3 text-xs text-gray-300"><div><strong class="text-yellow-300">Português</strong><p>print; definir função; se; senão; para cada; enquanto; retornar; verdadeiro/falso; recebe/igual; mais/menos/vezes/dividido por; abre/fecha parênteses; aspas; dois pontos; vírgula; nova linha; apagar palavra; apagar linha; limpar código.</p></div><div><strong class="text-yellow-300">English</strong><p>print; define function; if; else; for; while; return; true/false; equals/assign; plus/minus/times/divided by; open/close parenthesis; quotation marks; colon; comma; new line; delete word; delete line; clear code.</p></div></div><p class="text-[11px] text-gray-500 mt-3">Dica: para strings e estruturas, dite pontuação explicitamente, por exemplo: “print, open parenthesis, quotation marks, hello, quotation marks, close parenthesis”.</p></details>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Footer / Status Bar -->
+    <footer class="h-6 bg-vscode-blue text-white flex items-center justify-between px-3 text-[11px] border-t border-vscode-border">
+        <div class="flex items-center space-x-4">
+            <span class="flex items-center gap-1"><i class="fas fa-code-branch"></i> main*</span>
+            <span><i class="fas fa-sync-alt animate-spin text-[9px]"></i> Ready</span>
+        </div>
+        <div class="flex items-center space-x-4">
+            <span>Ln <span id="status-line">1</span>, Col <span id="status-col">1</span></span>
+            <span>UTF-8</span>
+            <span>Python 3.11</span>
+        </div>
+    </footer>
+
+    <!-- Monaco Editor: editor de código usado pelo VS Code (requer internet) -->
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+    <!-- Interpretador Python real no navegador (carrega sob demanda; requer internet) -->
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.27.7/full/pyodide.js"></script>
+    <!-- JavaScript Logic -->
+    <script>
+        // Custom popup notification replacing native alert()
+        function showNotification(msg) {
+            const toast = document.createElement('div');
+            toast.className = 'fixed bottom-10 right-10 bg-vscode-blue text-white px-4 py-2.5 rounded-lg shadow-xl text-xs z-50 flex items-center gap-2 animate-bounce';
+            toast.innerHTML = '<i class="fas fa-info-circle"></i> ' + msg;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        // Store virtual files content
+        const virtualFiles = {
+            'main.py': '# Bem-vindo ao PyCode Studio!\nnome = "Desenvolvedor"\nprint(f"Olá, {nome}! Bem-vindo à sua IDE Python.")\n\nfor i in range(1, 4):\n    print(f"Contagem regressiva: {i}")\n\nprint("Pronto para codificar!")',
+            'exemplos.py': '# Exemplos de Estruturas Python\n\ndef calcular_media(notas):\n    return sum(notas) / len(notas)\n\nlista_notas = [8.5, 9.0, 7.5]\nprint("Média:", calcular_media(lista_notas))',
+            'exercicios.py': '# Exercício: Verificador de número par\nnumero = 10\nif numero % 2 == 0:\n    print(f"{numero} é PAR")\nelse:\n    print(f"{numero} é ÍMPAR")'
+        };
+        let currentFile = 'main.py';
+        const PROJECT_STORAGE_KEY = 'pycode-studio-files-v2';
+        function persistVirtualFiles() {
+            try { localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify({ currentFile, files: virtualFiles })); }
+            catch (_) { /* O armazenamento local pode estar desativado ou cheio. */ }
+        }
+        function restoreVirtualFiles() {
+            try {
+                const saved = JSON.parse(localStorage.getItem(PROJECT_STORAGE_KEY) || 'null');
+                if (saved && saved.files && typeof saved.files === 'object') {
+                    Object.entries(saved.files).forEach(([name, content]) => {
+                        if (typeof content === 'string' && name && !/[\\/:*?"<>|]/.test(name)) virtualFiles[name] = content;
+                    });
+                    if (saved.currentFile && Object.prototype.hasOwnProperty.call(virtualFiles, saved.currentFile)) currentFile = saved.currentFile;
+                }
+            } catch (_) { /* Ignora dados locais inválidos e usa o projeto inicial. */ }
+        }
+        restoreVirtualFiles();
+
+        // Tab Switching
+        function setActiveTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.nav-btn').forEach(el => {
+                el.classList.remove('text-vscode-accent', 'border-l-2', 'border-vscode-blue');
+                el.classList.add('text-gray-500');
+            });
+
+            const activeTabEl = document.getElementById('tab-' + tabId);
+            const activeNavBtn = document.getElementById('nav-' + tabId);
+
+            if (activeTabEl) activeTabEl.classList.remove('hidden');
+            if (activeNavBtn) {
+                activeNavBtn.classList.add('text-vscode-accent', 'border-l-2', 'border-vscode-blue');
+                activeNavBtn.classList.remove('text-gray-500');
+            }
+        }
+
+        // Arquivos virtuais: mantém o conteúdo sincronizado com o editor Monaco ou fallback.
+        function getEditorValue() {
+            if (monacoEditor) return monacoEditor.getValue();
+            return document.getElementById('code-editor').value;
+        }
+        function setEditorValue(value) {
+            const text = String(value ?? '');
+            const fallback = document.getElementById('code-editor');
+            fallback.value = text;
+            if (monacoEditor && monacoEditor.getValue() !== text) monacoEditor.setValue(text);
+            updateLineNumbers();
+        }
+        function switchFile(filename) {
+            if (!Object.prototype.hasOwnProperty.call(virtualFiles, filename)) return;
+            virtualFiles[currentFile] = getEditorValue();
+            currentFile = filename;
+            document.getElementById('current-filename').innerText = filename;
+            setEditorValue(virtualFiles[filename] || '');
+            refreshFileExplorer(); persistVirtualFiles();
+        }
+
+        // Sincronização do editor. Monaco cuida de numeração, indentação e edição quando carregado.
+        let monacoEditor = null;
+        function updateLineNumbers() {
+            const editor = document.getElementById('code-editor');
+            if (monacoEditor) {
+                const value = monacoEditor.getValue();
+                if (editor.value !== value) editor.value = value;
+                virtualFiles[currentFile] = value;
+                persistVirtualFiles();
+                const numbers = document.getElementById('line-numbers');
+                if (numbers) numbers.classList.add('hidden');
+                return;
+            }
+            const lines = editor.value.split('\n').length;
+            const lineNumbersDiv = document.getElementById('line-numbers');
+            lineNumbersDiv.innerHTML = Array.from({length: lines}, (_, i) => i + 1).join('<br>');
+            virtualFiles[currentFile] = editor.value;
+            persistVirtualFiles();
+        }
+        function handleTab(e) {
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                const editor = document.getElementById('code-editor');
+                const start = editor.selectionStart, end = editor.selectionEnd;
+                editor.value = editor.value.substring(0, start) + '    ' + editor.value.substring(end);
+                editor.selectionStart = editor.selectionEnd = start + 4;
+                updateLineNumbers();
+            }
+        }
+        function initMonacoEditor() {
+            if (!window.require || !document.getElementById('monaco-editor')) return;
+            window.MonacoEnvironment = window.MonacoEnvironment || {};
+            window.MonacoEnvironment.getWorkerUrl = function() {
+                const worker = "self.MonacoEnvironment={baseUrl:'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/'};importScripts('https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/base/worker/workerMain.js');";
+                return 'data:text/javascript;charset=utf-8,' + encodeURIComponent(worker);
+            };
+            require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+            require(['vs/editor/editor.main'], function() {
+                const host = document.getElementById('monaco-editor');
+                const fallback = document.getElementById('code-editor');
+                monacoEditor = monaco.editor.create(host, {
+                    value: fallback.value,
+                    language: 'python',
+                    theme: 'vs-dark',
+                    automaticLayout: true,
+                    fontFamily: "'Fira Code', Consolas, monospace",
+                    fontSize: 13,
+                    lineNumbers: 'on',
+                    minimap: { enabled: false },
+                    tabSize: 4,
+                    insertSpaces: true,
+                    wordWrap: 'off',
+                    scrollBeyondLastLine: false,
+                    renderWhitespace: 'selection',
+                    suggestOnTriggerCharacters: true,
+                    quickSuggestions: true,
+                    padding: { top: 10, bottom: 10 }
+                });
+                host.classList.remove('hidden');
+                fallback.classList.add('hidden');
+                document.getElementById('line-numbers').classList.add('hidden');
+                monacoEditor.onDidChangeModelContent(() => {
+                    fallback.value = monacoEditor.getValue();
+                    virtualFiles[currentFile] = fallback.value;
+                    persistVirtualFiles();
+                    updateStatusFromEditor();
+                });
+                monacoEditor.onDidChangeCursorPosition(updateStatusFromEditor);
+                monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => runPythonCode());
+                monacoEditor.focus();
+                updateStatusFromEditor();
+            }, function() { showNotification('Editor avançado indisponível; usando o editor simples.'); });
+        }
+        function updateStatusFromEditor() {
+            if (!monacoEditor) return;
+            const pos = monacoEditor.getPosition();
+            if (pos) {
+                document.getElementById('status-line').innerText = pos.lineNumber;
+                document.getElementById('status-col').innerText = pos.column;
+            }
+        }
+        document.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); runPythonCode(); }
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveCurrentFile(); }
+        });
+
+        // Execução local real via backend (Python instalado) com fallback Pyodide ao abrir o HTML isolado.
+        let pyodideInstance = null;
+        let pyodideLoadPromise = null;
+        const activeTerminalSockets = {};
+        let lastPythonError = '';
+        let localBackendAvailable = false;
+        async function refreshBackendStatus() {
+            try {
+                const response = await fetch('/api/health', { cache: 'no-store' });
+                if (!response.ok) throw new Error('backend indisponível');
+                const data = await response.json();
+                localBackendAvailable = true;
+                const ai = document.getElementById('ai-status');
+                if (ai) ai.innerText = data.aiConfigured ? 'IA conectada' : 'IA não configurada (adicione a chave no .env)';
+                const status = document.querySelector('header .bg-vscode-activity');
+                if (status) status.innerHTML = '<span class="w-2 h-2 rounded-full bg-green-500"></span> Python local: ' + escapeHtml(data.pythonVersion || 'conectado');
+            } catch (_) {
+                localBackendAvailable = false;
+                const ai = document.getElementById('ai-status');
+                if (ai) ai.innerText = 'Abra pelo iniciar.bat para habilitar a IA';
+            }
+        }
+        async function getPyodide() {
+            if (pyodideInstance) return pyodideInstance;
+            if (typeof loadPyodide !== 'function') throw new Error('Interpretador indisponível. Execute o aplicativo pelo iniciar.bat ou verifique a conexão.');
+            if (!pyodideLoadPromise) pyodideLoadPromise = loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/' });
+            pyodideInstance = await pyodideLoadPromise;
+            return pyodideInstance;
+        }
+        async function executePythonCode(code, outputElement, runFilename) {
+            const output = typeof outputElement === 'string' ? document.getElementById(outputElement) : outputElement;
+            if (!output) return;
+            if (localBackendAvailable && location.protocol.startsWith('http')) {
+                await runPythonInLocalBackend(code, output.id, output.id === 'voice-terminal-output' ? 'voice-terminal-input' : 'terminal-input', runFilename || currentFile);
+                return;
+            }
+            output.innerText = '>>> Preparando o Python no navegador…\n';
+            try {
+                const py = await getPyodide();
+                let captured = '';
+                py.setStdout({ batched: text => { captured += text + '\n'; } });
+                py.setStderr({ batched: text => { captured += text + '\n'; } });
+                await py.runPythonAsync(code);
+                lastPythonError = '';
+                output.innerText = '>>> ' + (output.id === 'voice-terminal-output' ? 'Código de voz' : currentFile) + '\n' + (captured || 'Código executado sem saída.') + '\n[Execução finalizada]\nObservação: modo navegador; input() pode abrir uma caixa de diálogo.';
+            } catch (err) {
+                lastPythonError = err && err.message ? err.message : String(err);
+                output.innerText = 'Erro Python:\n' + lastPythonError;
+            }
+        }
+        function appendTerminalText(output, text) {
+            if (!output) return;
+            if (output.innerText.startsWith('Terminal Python pronto') || output.innerText.startsWith('Terminal da voz pronto')) output.innerText = '';
+            output.append(document.createTextNode(String(text)));
+            output.scrollTop = output.scrollHeight;
+        }
+        async function runPythonInLocalBackend(code, outputId, inputId, filename) {
+            const output = document.getElementById(outputId);
+            if (!output) return;
+            if (activeTerminalSockets[outputId]) { try { activeTerminalSockets[outputId].close(); } catch (_) {} }
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const socket = new WebSocket(protocol + '//' + location.host + '/ws/run');
+            activeTerminalSockets[outputId] = socket;
+            output.innerText = '>>> Iniciando Python local…\n';
+            socket.onopen = () => socket.send(JSON.stringify({ type: 'run', code, filename: filename || 'main.py', files: virtualFiles }));
+            socket.onmessage = event => {
+                let message; try { message = JSON.parse(event.data); } catch (_) { appendTerminalText(output, event.data); return; }
+                if (message.type === 'output') appendTerminalText(output, message.text);
+                else if (message.type === 'error') { lastPythonError = message.text || 'Erro no backend'; appendTerminalText(output, '\n[Erro] ' + lastPythonError + '\n'); }
+                else if (message.type === 'exit') { appendTerminalText(output, '\n[Processo finalizado — código ' + message.code + ']\n'); if (message.code === 0) lastPythonError = ''; }
+                else if (message.type === 'started') appendTerminalText(output, '[Python local iniciado]\n');
+            };
+            socket.onerror = () => { appendTerminalText(output, '\nNão foi possível conectar ao backend. Abra o programa pelo iniciar.bat.\n'); };
+            socket.onclose = () => { if (activeTerminalSockets[outputId] === socket) delete activeTerminalSockets[outputId]; };
+            const input = document.getElementById(inputId);
+            if (input) input.dataset.terminalId = outputId;
+        }
+        function stopTerminalProcess(outputId) {
+            const socket = activeTerminalSockets[outputId];
+            if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'stop'}));
+            else showNotification('Não há execução ativa neste terminal.');
+        }
+        function sendTerminalInput(outputId, inputId) {
+            const input = document.getElementById(inputId); if (!input) return;
+            const text = input.value; input.value = '';
+            const socket = activeTerminalSockets[outputId];
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                appendTerminalText(document.getElementById(outputId), text + '\n');
+                socket.send(JSON.stringify({ type: 'input', text: text + '\n' }));
+            } else showNotification('Execute um programa que esteja aguardando input() para enviar uma entrada.');
+        }
+        async function runPythonCode() {
+            const code = getEditorValue(); virtualFiles[currentFile] = code;
+            await executePythonCode(code, 'terminal-output');
+        }
+        async function checkPythonSyntax() {
+            const code = getEditorValue();
+            if (!localBackendAvailable) { try { new Function(code); showNotification('A verificação Python precisa do aplicativo local.'); } catch (_) { showNotification('Abra o aplicativo local para verificar sintaxe Python.'); } return; }
+            try {
+                const response = await fetch('/api/check', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({code}) });
+                const data = await response.json();
+                if (data.ok) { lastPythonError = ''; showNotification('Sintaxe Python válida.'); }
+                else { lastPythonError = data.error || 'Erro de sintaxe'; showNotification(lastPythonError); document.getElementById('terminal-output').innerText = lastPythonError; }
+            } catch (error) { showNotification('Não foi possível verificar a sintaxe: ' + error.message); }
+        }
+        async function runAutomatedChecks() {
+            if (!localBackendAvailable) { showNotification('Abra o aplicativo pelo iniciar.bat para executar os testes automatizados.'); return; }
+            const output = document.getElementById('terminal-output'); output.innerText = 'Executando testes automatizados do PyCode Studio…\n';
+            try { const response = await fetch('/api/tests', {method:'POST'}); const data = await response.json(); output.innerText = data.output || (data.ok ? 'Todos os testes passaram.' : 'Alguns testes falharam.'); }
+            catch (error) { output.innerText = 'Falha ao executar testes: ' + error.message; }
+        }
+        async function askPythonTutor(mode) {
+            const output = document.getElementById('ai-tutor-output');
+            if (!output) return;
+            if (!localBackendAvailable) { output.classList.remove('hidden'); output.innerText = 'O tutor de IA funciona no aplicativo local. Feche este arquivo e abra iniciar.bat.'; return; }
+            const question = (document.getElementById('ai-question')?.value || '').trim();
+            const includeCode = document.getElementById('ai-send-code')?.checked;
+            const code = includeCode ? getEditorValue() : '';
+            const error = includeCode ? lastPythonError : '';
+            if (mode === 'question' && !question) { showNotification('Escreva sua pergunta para o tutor.'); return; }
+            output.classList.remove('hidden'); output.innerText = 'O tutor está analisando…';
+            try {
+                const response = await fetch('/api/tutor', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mode, question, code, error})});
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.detail || data.error || 'Não foi possível consultar o tutor.');
+                output.innerText = data.answer || 'O tutor não retornou texto.';
+                window.lastTutorAnswer = output.innerText;
+            } catch (err) { output.innerText = 'Não foi possível obter a resposta. ' + err.message + '\n\nVerifique se a chave OPENAI_API_KEY está configurada no arquivo .env e se há conexão com a internet.'; }
+        }
+        function speakTutorAnswer() {
+            const text = window.lastTutorAnswer || document.getElementById('ai-tutor-output')?.innerText || '';
+            if (!text.trim()) { showNotification('Peça uma explicação ao tutor primeiro.'); return; }
+            if (!('speechSynthesis' in window)) { showNotification('Leitura por voz não disponível neste navegador.'); return; }
+            speechSynthesis.cancel(); const utterance = new SpeechSynthesisUtterance(text); utterance.lang = 'pt-BR'; utterance.rate = 0.95; speechSynthesis.speak(utterance);
+        }
+        function clearEditor() { setEditorValue(''); }
+        async function copyEditorCode() {
+            const code = getEditorValue();
+            try { await navigator.clipboard.writeText(code); showNotification('Código copiado!'); }
+            catch { const fallback = document.getElementById('code-editor'); fallback.value = code; fallback.select(); document.execCommand('copy'); showNotification('Código copiado!'); }
+        }
+        function clearTerminal() { document.getElementById('terminal-output').innerText = 'Terminal limpo.'; }
+        function insertSnippet(type) {
+            let snippet = '';
+            if (type === 'if') snippet = '\nif condicao:\n    # seu codigo aqui\nelse:\n    pass\n';
+            if (type === 'for') snippet = '\nfor i in range(10):\n    print(i)\n';
+            if (type === 'def') snippet = '\ndef minha_funcao(parametro):\n    return parametro\n';
+            if (type === 'class') snippet = '\nclass MinhaClasse:\n    def __init__(self):\n        pass\n';
+            setEditorValue(getEditorValue() + snippet);
+        }
+        function copyDocSnippet(code) {
+            setActiveTab('editor');
+            const current = getEditorValue();
+            setEditorValue(current + (current.trim() ? '\n\n' : '') + code);
+            if (monacoEditor) monacoEditor.focus();
+        }
+        function filterDocs() { searchPythonReference('docs-search', 'docs-search-results'); }
+
+        // Video Lessons Simulator with Web Speech Synthesis
+        const videoLessons = {
+            intro: {title:'Aula 1: Introdução ao Python', text:'Python é uma linguagem de programação. A função print exibe informações no console.', code:'print("Olá, Python!")', icon:'fab fa-python', keywords:'introdução print sintaxe'},
+            variables: {title:'Aula 2: Variáveis e tipos', text:'Variáveis guardam valores. Inteiro é int, decimal é float, texto é str e verdadeiro ou falso é bool.', code:'nome = "Ana"\nidade = 25\nativo = True\nprint(nome, idade, ativo)', icon:'fas fa-cube', keywords:'variáveis int float str bool tipos'},
+            loops: {title:'Aula 3: Repetição for e range', text:'O for percorre uma sequência. range três produz os números zero, um e dois.', code:'for i in range(3):\n    print(i)', icon:'fas fa-sync', keywords:'for range loop repetição'},
+            functions: {title:'Aula 4: Funções', text:'A palavra def define uma função. return devolve um resultado para quem chamou a função.', code:'def somar(a, b):\n    return a + b\n\nprint(somar(2, 3))', icon:'fas fa-cogs', keywords:'def função return parâmetros'},
+            conditions: {title:'Aula 5: Condições if, elif e else', text:'Condições permitem executar caminhos diferentes. Use dois pontos e mantenha a indentação.', code:'nota = 8\nif nota >= 7:\n    print("Aprovado")\nelse:\n    print("Reprovado")', icon:'fas fa-code-branch', keywords:'if elif else condição comparação'},
+            lists: {title:'Aula 6: Listas e métodos', text:'Listas armazenam vários valores. append adiciona ao final e len conta os elementos.', code:'frutas = ["maçã", "uva"]\nfrutas.append("pera")\nprint(frutas)\nprint(len(frutas))', icon:'fas fa-list', keywords:'lista append len pop sort'},
+            dicts: {title:'Aula 7: Dicionários', text:'Dicionários relacionam chaves e valores. Acesse um valor usando a chave entre colchetes.', code:'aluno = {"nome": "Ana", "nota": 9}\nprint(aluno["nome"])', icon:'fas fa-book', keywords:'dicionário dict chave value get items'},
+            while: {title:'Aula 8: Repetição while', text:'O while repete enquanto uma condição for verdadeira. Atualize a condição para evitar repetição infinita.', code:'contador = 0\nwhile contador < 3:\n    print(contador)\n    contador += 1', icon:'fas fa-repeat', keywords:'while loop repetição contador'}
+        };
+
+        let currentLessonKey = 'intro';
+        function loadVideoLesson(key) {
+            currentLessonKey = key;
+            const lesson = videoLessons[key];
+            document.getElementById('lesson-title').innerText = lesson.title;
+            document.getElementById('lesson-caption').innerText = lesson.text;
+            document.getElementById('lesson-code-preview').classList.remove('hidden');
+            document.getElementById('lesson-code-preview').innerText = lesson.code;
+            document.getElementById('lesson-icon').className = lesson.icon + ' text-6xl text-yellow-400 mb-4';
+            document.getElementById('lesson-status').innerText = 'Status: Aula Carregada';
+        }
+
+
+
+        function filterVideoLessons() {
+            const query = document.getElementById('video-search').value.trim().toLowerCase();
+            document.querySelectorAll('#video-topic-selector button').forEach(btn => {
+                btn.style.display = btn.innerText.toLowerCase().includes(query) ? '' : 'none';
+            });
+            const matches = Object.entries(videoLessons).filter(([key, lesson]) =>
+                (lesson.title + ' ' + lesson.text + ' ' + lesson.code + ' ' + lesson.keywords).toLowerCase().includes(query));
+            if (matches.length && query) loadVideoLesson(matches[0][0]);
+        }
+
+        function togglePlayLesson() {
+            const lesson = videoLessons[currentLessonKey];
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(lesson.text);
+                utterance.lang = 'pt-BR';
+                utterance.rate = 1.0;
+                
+                utterance.onstart = () => {
+                    document.getElementById('lesson-status').innerText = 'Status: Narrando com voz IA...';
+                };
+                utterance.onend = () => {
+                    document.getElementById('lesson-status').innerText = 'Status: Aula Concluída';
+                };
+
+                window.speechSynthesis.speak(utterance);
+            } else {
+                showNotification('Síntese de voz não suportada neste navegador.');
+            }
+        }
+
+        /* ==========================================================
+           GERADOR PROCEDURAL DE QUIZ DE MÚLTIPLA ESCOLHA (+300 VARIAÇÕES)
+           ========================================================== */
+        let currentQuizQuestionObj = null;
+        let quizScore = 0;
+        let quizStreak = 0;
+        let quizQuestionCount = 1;
+
+        function getRandomInt(min, max) {
+            return Math.floor(Math.random() * (max - min + 1)) + min;
+        }
+
+        function getRandomChoice(arr) {
+            return arr[Math.floor(Math.random() * arr.length)];
+        }
+
+        function generateDynamicQuizQuestion() {
+            const questionTypes = [
+                'integer_division', 'modulo_op', 'power_op', 'list_indexing', 
+                'string_slicing', 'type_conversion', 'boolean_logic', 'len_function',
+                'list_append', 'dictionary_access', 'range_len', 'string_upper'
+            ];
+            
+            const type = getRandomChoice(questionTypes);
+            let category = "Sintaxe Básica";
+            let difficulty = "Iniciante";
+            let question = "";
+            let code = "";
+            let correctVal = "";
+            let wrongVals = [];
+            let explanation = "";
+
+            if (type === 'integer_division') {
+                category = "Operadores Matemáticos";
+                difficulty = "Iniciante";
+                const a = getRandomInt(11, 29);
+                const b = getRandomInt(2, 4);
+                const res = Math.floor(a / b);
+                question = "Qual é o valor impresso pela divisão inteira (`//`)?";
+                code = `a = ${a}\nb = ${b}\nprint(a // b)`;
+                correctVal = String(res);
+                wrongVals = [String((a / b).toFixed(1)), String(res + 1), String(a % b)];
+                explanation = "O operador `//` realiza a divisão inteira, descartando qualquer parte fracionária.";
+            } 
+            else if (type === 'modulo_op') {
+                category = "Operadores Matemáticos";
+                difficulty = "Iniciante";
+                const a = getRandomInt(10, 35);
+                const b = getRandomInt(3, 7);
+                const res = a % b;
+                question = "Qual é o resultado da operação resto de divisão (`%`)?";
+                code = `x = ${a}\ny = ${b}\nprint(x % y)`;
+                correctVal = String(res);
+                wrongVals = [String(Math.floor(a / b)), String((a / b).toFixed(1)), String(res + 1)];
+                explanation = "O operador `%` (módulo) calcula o resto da divisão entre dois números.";
+            }
+            else if (type === 'power_op') {
+                category = "Operadores Matemáticos";
+                difficulty = "Intermediário";
+                const base = getRandomInt(2, 5);
+                const exp = getRandomInt(2, 4);
+                const res = Math.pow(base, exp);
+                question = "Qual é a saída gerada pelo operador de exponenciação (`**`)?";
+                code = `base = ${base}\nexp = ${exp}\nprint(base ** exp)`;
+                correctVal = String(res);
+                wrongVals = [String(base * exp), String(res + base), String(Math.pow(exp, base))];
+                explanation = "O operador `**` calcula a potência da base elevada ao expoente.";
+            }
+            else if (type === 'list_indexing') {
+                category = "Estruturas de Dados";
+                difficulty = "Iniciante";
+                const items = ["'Python'", "'JavaScript'", "'Java'", "'C++'", "'Ruby'", "'Go'"];
+                const shuffled = [...items].sort(() => 0.5 - Math.random());
+                const idx = getRandomInt(0, 3);
+                question = "Qual elemento será exibido pelo índice de lista?";
+                code = `linguagens = [${shuffled.slice(0, 4).join(', ')}]\nprint(linguagens[${idx}])`;
+                correctVal = shuffled[idx];
+                wrongVals = shuffled.filter((_, i) => i !== idx).slice(0, 3);
+                explanation = "Em Python, o índice de listas começa em zero (`0`).";
+            }
+            else if (type === 'string_slicing') {
+                category = "Manipulação de Strings";
+                difficulty = "Intermediário";
+                const words = ["DEVELOPER", "PROGRAMMING", "ALGORITHM", "VARIABLES"];
+                const word = getRandomChoice(words);
+                const start = getRandomInt(0, 2);
+                const end = getRandomInt(start + 3, word.length);
+                const res = word.slice(start, end);
+                question = "Qual a saída do faturamento de string (slicing)?";
+                code = `texto = "${word}"\nprint(texto[${start}:${end}])`;
+                correctVal = `"${res}"`;
+                wrongVals = [`"${word.slice(start, end + 1)}"`, `"${word.slice(start + 1, end)}"`, `"${word.slice(0, end)}"`];
+                explanation = "O faturamento de string `[início:fim]` pega do caractere inicial até o caractere `fim - 1`.";
+            }
+            else if (type === 'type_conversion') {
+                category = "Tipos de Dados";
+                difficulty = "Iniciante";
+                const num = getRandomInt(5, 50);
+                question = "Qual será o tipo de dado retornado pela função `type()`?";
+                code = `valor = str(${num})\nprint(type(valor))`;
+                correctVal = "<class 'str'>";
+                wrongVals = ["<class 'int'>", "<class 'float'>", "<class 'bool'>"];
+                explanation = "A função `str()` converte o número para uma string textual.";
+            }
+            else if (type === 'boolean_logic') {
+                category = "Lógica Booleana";
+                difficulty = "Intermediário";
+                const v1 = getRandomChoice([true, false]);
+                const v2 = getRandomChoice([true, false]);
+                const op = getRandomChoice(['and', 'or']);
+                const res = op === 'and' ? (v1 && v2) : (v1 || v2);
+                question = "Qual é o valor booleano resultante dessa expressão de lógica?";
+                code = `a = ${v1 ? 'True' : 'False'}\nb = ${v2 ? 'True' : 'False'}\nprint(a ${op} b)`;
+                correctVal = res ? "True" : "False";
+                wrongVals = [res ? "False" : "True", "None", "Error"];
+                explanation = op === 'and' ? "O operador `and` só retorna `True` se ambas as partes forem verdadeiras." : "O operador `or` retorna `True` se pelo menos uma parte for verdadeira.";
+            }
+            else if (type === 'len_function') {
+                category = "Funções Nativas";
+                difficulty = "Iniciante";
+                const count = getRandomInt(3, 8);
+                const nums = Array.from({length: count}, () => getRandomInt(1, 99));
+                question = "Qual é a saída gerada pela função `len()`?";
+                code = `numeros = [${nums.join(', ')}]\nprint(len(numeros))`;
+                correctVal = String(count);
+                wrongVals = [String(count - 1), String(count + 1), String(nums[nums.length - 1])];
+                explanation = "A função `len()` retorna o número total de elementos contidos em uma coleção.";
+            }
+            else if (type === 'list_append') {
+                category = "Estruturas de Dados";
+                difficulty = "Iniciante";
+                const val = getRandomInt(10, 99);
+                question = "O que acontece com a lista após o método `append()`?";
+                code = `dados = [1, 2]\ndados.append(${val})\nprint(dados)`;
+                correctVal = `[1, 2, ${val}]`;
+                wrongVals = [`[${val}, 1, 2]`, `[1, 2]`, `[${val}]`];
+                explanation = "O método `.append()` adiciona o elemento informado exatamente no final da lista.";
+            }
+            else if (type === 'dictionary_access') {
+                category = "Dicionários";
+                difficulty = "Intermediário";
+                const keys = ["nome", "idade", "curso", "nota"];
+                const valStr = getRandomChoice(["'Ana'", "'Carlos'", "'Python'", "10"]);
+                question = "Qual o resultado de se acessar a chave de um dicionário?";
+                code = `aluno = {"nome": "Ana", "idade": 20, "curso": "Python", "nota": 10}\nprint(aluno["${keys[0]}"])`;
+                correctVal = '"Ana"';
+                wrongVals = ['20', '"Python"', '10'];
+                explanation = "Dicionários em Python utilizam chaves mapeadas para recuperar seus respectivos valores.";
+            }
+            else if (type === 'range_len') {
+                category = "Estrutura de Repetição";
+                difficulty = "Intermediário";
+                const stop = getRandomInt(4, 9);
+                question = "Quantas vezes a instrução `print` dentro do laço será executada?";
+                code = `contador = 0\nfor i in range(${stop}):\n    contador += 1\nprint(contador)`;
+                correctVal = String(stop);
+                wrongVals = [String(stop - 1), String(stop + 1), String(0)];
+                explanation = "`range(N)` gera N iterações, variando do índice 0 até N - 1.";
+            }
+            else {
+                category = "Manipulação de Strings";
+                difficulty = "Iniciante";
+                const word = getRandomChoice(["python", "code", "vscode", "script"]);
+                question = "Qual é a saída gerada pelo método `.upper()`?";
+                code = `texto = "${word}"\nprint(texto.upper())`;
+                correctVal = `"${word.toUpperCase()}"`;
+                wrongVals = [`"${word}"`, `"${word.toLowerCase()}"`, `"${word.charAt(0).toUpperCase() + word.slice(1)}"`];
+                explanation = "O método `.upper()` converte todos os caracteres de uma string para maiúsculas.";
+            }
+
+            // Shuffle answer options
+            const options = [correctVal, ...wrongVals].sort(() => 0.5 - Math.random());
+            const correctIndex = options.indexOf(correctVal);
+
+            return {
+                category,
+                difficulty,
+                question,
+                code,
+                options,
+                correct: correctIndex,
+                explanation
+            };
+        }
+
+        const seenQuizQuestions = new Set();
+        let quizAnswered = false;
+        function loadQuizQuestion() {
+            let q, attempts = 0, signature;
+            do {
+                q = generateDynamicQuizQuestion();
+                signature = q.code + '|' + q.question + '|' + [...q.options].sort().join('|');
+                attempts++;
+            } while (seenQuizQuestions.has(signature) && attempts < 500);
+            seenQuizQuestions.add(signature);
+            currentQuizQuestionObj = q; quizAnswered = false;
+            document.getElementById('quiz-total-count').innerText = quizQuestionCount;
+            document.getElementById('quiz-category').innerText = "Categoria: " + q.category;
+            document.getElementById('quiz-difficulty').innerText = "Nível: " + q.difficulty;
+            document.getElementById('quiz-question-text').innerText = q.question;
+            document.getElementById('quiz-code-block').innerText = q.code;
+            const container = document.getElementById('quiz-options-container');
+            container.innerHTML = '';
+            const feedback = document.getElementById('quiz-feedback');
+            feedback.className = 'p-3 rounded text-xs hidden';
+            document.getElementById('quiz-next-btn').disabled = true;
+            document.getElementById('quiz-skip-btn').disabled = false;
+            document.getElementById('quiz-skip-btn').classList.remove('hidden');
+            document.getElementById('quiz-skip-btn').innerText = 'Pular questão';
+            document.getElementById('quiz-skip-btn').onclick = skipQuizQuestion;
+            document.getElementById('quiz-try-btn').classList.add('hidden');
+            q.options.forEach((opt, idx) => {
+                const btn = document.createElement('button');
+                btn.className = "w-full text-left bg-vscode-activity hover:bg-vscode-border p-3 rounded-lg text-xs font-mono text-gray-200 border border-vscode-border transition";
+                btn.textContent = String.fromCharCode(65 + idx) + '. ' + opt;
+                btn.onclick = () => selectQuizOption(idx);
+                container.appendChild(btn);
+            });
+        }
+        function selectQuizOption(index) {
+            if (quizAnswered) return;
+            const q = currentQuizQuestionObj, feedback = document.getElementById('quiz-feedback');
+            feedback.className = 'p-3 rounded text-xs';
+            if (index === q.correct) {
+                quizAnswered = true; quizScore += 10; quizStreak += 1;
+                feedback.classList.add('bg-green-900/50','text-green-300','border','border-green-700');
+                feedback.textContent = 'Resposta correta! ' + q.explanation;
+                document.getElementById('quiz-next-btn').disabled = false;
+                document.getElementById('quiz-skip-btn').disabled = true;
+                document.getElementById('quiz-skip-btn').classList.add('hidden');
+                document.getElementById('quiz-try-btn').classList.add('hidden');
+                document.querySelectorAll('#quiz-options-container button').forEach(b => b.disabled = true);
+            } else {
+                quizStreak = 0;
+                feedback.classList.add('bg-red-900/50','text-red-300','border','border-red-700');
+                feedback.textContent = 'Resposta incorreta. Tente novamente ou pule a questão. ' + q.explanation;
+                document.getElementById('quiz-try-btn').classList.remove('hidden');
+                document.getElementById('quiz-skip-btn').disabled = false;
+                document.getElementById('quiz-skip-btn').classList.remove('hidden');
+                document.querySelectorAll('#quiz-options-container button')[index].disabled = true;
+            }
+            document.getElementById('quiz-score').innerText = quizScore;
+            document.getElementById('quiz-streak').innerText = quizStreak;
+        }
+        function retryQuizQuestion() {
+            document.getElementById('quiz-try-btn').classList.add('hidden');
+            document.getElementById('quiz-feedback').classList.add('hidden');
+            document.querySelectorAll('#quiz-options-container button').forEach(b => b.disabled = false);
+        }
+        function nextQuizQuestion() {
+            if (!quizAnswered) return;
+            quizQuestionCount++; loadQuizQuestion();
+        }
+        function skipQuizQuestion() {
+            if (!quizAnswered && document.getElementById('quiz-skip-btn').disabled) return;
+            if (quizAnswered || !document.getElementById('quiz-feedback').classList.contains('hidden')) {
+                quizQuestionCount++; loadQuizQuestion(); return;
+            }
+            const feedback = document.getElementById('quiz-feedback');
+            feedback.className = 'p-3 rounded text-xs bg-yellow-900/40 text-yellow-200';
+            feedback.textContent = 'Faça uma tentativa antes de pular esta questão.';
+            feedback.classList.remove('hidden');
+        }
+
+        /* ==========================================================
+           GERADOR PROCEDURAL DE DESAFIOS DE ESCRITA (+300 VARIAÇÕES)
+           ========================================================== */
+        let currentWriteChallengeObj = null;
+        let writeCompletedCount = 0;
+        const seenWriteChallenges = new Set();
+        let writeAttempted = false;
+        let writeSolved = false;
+
+        function generateDynamicWriteChallenge() {
+            const challengeTemplates = [
+                'print_msg', 'assign_var', 'list_create', 'calc_sum', 
+                'str_len', 'if_condition', 'list_append', 'func_def'
+            ];
+
+            const template = getRandomChoice(challengeTemplates);
+            let desc = "";
+            let expected = [];
+            let hint = "";
+
+            if (template === 'print_msg') {
+                const msgs = ["Olá Mundo", "Bem-vindo", "Python 3", "Código Limpo", "Dev Studio"];
+                const msg = getRandomChoice(msgs);
+                desc = `Escreva o comando para imprimir a frase "${msg}" no console.`;
+                expected = [
+                    `print("${msg.toLowerCase()}")`, `print('${msg.toLowerCase()}')`,
+                    `print("${msg}")`, `print('${msg}')`
+                ];
+                hint = `Utilize a função print() com o texto entre aspas.`;
+            }
+            else if (template === 'assign_var') {
+                const vars = ["x", "y", "idade", "nota", "total"];
+                const varName = getRandomChoice(vars);
+                const val = getRandomInt(5, 100);
+                desc = `Crie uma variável chamada \`${varName}\` atribuindo a ela o valor inteiro ${val}.`;
+                expected = [`${varName} = ${val}`, `${varName}=${val}`];
+                hint = `Sintaxe básica: nome_da_variavel = valor`;
+            }
+            else if (template === 'list_create') {
+                const nums = [getRandomInt(1, 5), getRandomInt(6, 10), getRandomInt(11, 15)];
+                desc = `Crie uma lista chamada \`numeros\` contendo os valores [${nums.join(', ')}].`;
+                expected = [
+                    `numeros = [${nums.join(', ')}]`, `numeros=[${nums.join(', ')}]`,
+                    `numeros = [${nums.join(',')}]`, `numeros=[${nums.join(',')}]`
+                ];
+                hint = `Utilize colchetes [ ] para definir os itens da lista.`;
+            }
+            else if (template === 'calc_sum') {
+                const n1 = getRandomInt(10, 50);
+                const n2 = getRandomInt(10, 50);
+                desc = `Escreva a instrução para imprimir a soma dos números ${n1} e ${n2}.`;
+                expected = [
+                    `print(${n1} + ${n2})`, `print(${n1}+${n2})`,
+                    `print(${n1 + n2})`
+                ];
+                hint = `Você pode fazer o cálculo direto dentro de print(${n1} + ${n2}).`;
+            }
+            else if (template === 'str_len') {
+                const word = getRandomChoice(["python", "desenvolvimento", "programador", "estudo"]);
+                desc = `Escreva a instrução que exibe a quantidade de caracteres da palavra "${word}".`;
+                expected = [
+                    `print(len("${word}"))`, `print(len('${word}'))`
+                ];
+                hint = `Combine print() com a função len("texto").`;
+            }
+            else if (template === 'if_condition') {
+                const val = getRandomInt(10, 30);
+                desc = `Escreva o cabeçalho de uma estrutura \`if\` testando se a variável \`x\` é maior que ${val}.`;
+                expected = [`if x > ${val}:`, `if x>${val}:`, `if (x > ${val}):`, `if (x>${val}):`];
+                hint = `Formato: if condicao: (não esqueça dos dois pontos no final).`;
+            }
+            else if (template === 'list_append') {
+                const val = getRandomInt(10, 99);
+                desc = `Escreva o comando para adicionar o valor ${val} ao final da lista chamada \`dados\`.`;
+                expected = [`dados.append(${val})`];
+                hint = `Utilize o método .append(valor) na lista dados.`;
+            }
+            else {
+                const funcName = getRandomChoice(["somar", "calcular", "processar", "iniciar"]);
+                desc = `Escreva a assinatura da função \`${funcName}\` que não recebe nenhum parâmetro.`;
+                expected = [`def ${funcName}():`, `def ${funcName} () :`, `def ${funcName} ()` ];
+                hint = `Formato: def nome_da_funcao():`;
+            }
+
+            return { desc, expected, hint };
+        }
+
+        function loadWriteChallenge() {
+            let c, sig, attempts = 0;
+            do { c = generateDynamicWriteChallenge(); sig = c.desc; attempts++; }
+            while (seenWriteChallenges.has(sig) && attempts < 500);
+            seenWriteChallenges.add(sig);
+            currentWriteChallengeObj = c; writeAttempted = false; writeSolved = false;
+            const next = document.getElementById('write-next-btn'); if (next) next.disabled = true;
+            const skip = document.getElementById('write-skip-btn'); if (skip) { skip.disabled = false; skip.classList.remove('hidden'); skip.innerText = 'Pular desafio'; }
+            const verify = document.querySelector('#tab-quiz-write button[onclick="checkWriteAnswer()"]'); if (verify) verify.disabled = false;
+            const hint = document.querySelector('#tab-quiz-write button[onclick="showWriteHint()"]'); if (hint) hint.disabled = false;
+            const retry = document.getElementById('write-try-btn'); if (retry) retry.classList.add('hidden');
+            document.getElementById('write-challenge-id').innerText = writeCompletedCount + 1;
+            document.getElementById('write-challenge-desc').innerText = c.desc;
+            document.getElementById('write-quiz-input').value = '';
+            document.getElementById('write-quiz-feedback').classList.add('hidden');
+        }
+
+        function checkWriteAnswer() {
+            writeAttempted = true;
+            const input = document.getElementById('write-quiz-input').value.trim().toLowerCase();
+            const c = currentWriteChallengeObj;
+            const feedback = document.getElementById('write-quiz-feedback');
+            feedback.classList.remove('hidden', 'bg-green-900/50', 'bg-red-900/50', 'text-green-300', 'text-red-300');
+
+            const isCorrect = c.expected.some(exp => exp.toLowerCase() === input);
+
+            if (isCorrect) {
+                if (!writeSolved) writeCompletedCount += 1;
+                writeSolved = true;
+                document.getElementById('write-completed-count').innerText = writeCompletedCount;
+                document.getElementById('write-next-btn').disabled = false;
+                document.getElementById('write-skip-btn').disabled = true;
+                document.getElementById('write-skip-btn').classList.add('hidden');
+                const verify = document.querySelector('#tab-quiz-write button[onclick="checkWriteAnswer()"]'); if (verify) verify.disabled = true;
+                const hint = document.querySelector('#tab-quiz-write button[onclick="showWriteHint()"]'); if (hint) hint.disabled = true;
+                document.getElementById('write-try-btn').classList.add('hidden');
+                feedback.classList.add('bg-green-900/50', 'text-green-300', 'border', 'border-green-700');
+                feedback.innerHTML = '<strong>Parabéns!</strong> Código correto! <i class="fas fa-check"></i>';
+            } else {
+                feedback.classList.add('bg-red-900/50', 'text-red-300', 'border', 'border-red-700');
+                feedback.innerHTML = '<strong>Código incorreto.</strong> Tente novamente ou pule o desafio.';
+                document.getElementById('write-try-btn').classList.remove('hidden');
+                document.getElementById('write-skip-btn').disabled = false;
+            }
+        }
+
+        function showWriteHint() {
+            const c = currentWriteChallengeObj;
+            showNotification("Dica: " + c.hint);
+        }
+
+        function retryWriteChallenge() {
+            document.getElementById('write-quiz-feedback').classList.add('hidden');
+            document.getElementById('write-quiz-input').focus();
+            document.getElementById('write-try-btn').classList.add('hidden');
+        }
+        function skipWriteChallenge() {
+            if (!writeAttempted) { showNotification('Responda ao desafio ao menos uma vez antes de pular.'); return; }
+            loadWriteChallenge();
+        }
+        function nextWriteChallenge() {
+            if (!writeSolved) return;
+            loadWriteChallenge();
+        }
+
+        let recognition = null, isRecording = false, voiceAccumulatedCode = '';
+        let lastVoiceTranscript = '';
+        function initVoiceRecognition() {
+            const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SR) { showNotification('Reconhecimento de voz não suportado. Use uma versão recente do Chrome ou Edge e permita o microfone.'); return; }
+            recognition = new SR();
+            recognition.lang = document.getElementById('voice-language')?.value || 'pt-BR';
+            recognition.continuous = true; recognition.interimResults = true; recognition.maxAlternatives = 1;
+            recognition.onstart = () => {
+                isRecording = true;
+                document.getElementById('mic-btn-text').innerText = 'Parar microfone';
+                document.getElementById('voice-status-text').innerText = 'Ouvindo…';
+                document.getElementById('voice-status-text').className = 'text-green-400 animate-pulse';
+            };
+            recognition.onresult = (event) => {
+                let interim = '';
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        lastVoiceTranscript = transcript;
+                        document.getElementById('voice-transcript').innerText = transcript;
+                        voiceAccumulatedCode += convertSpeechChunk(transcript);
+                    } else interim += transcript;
+                }
+                if (interim) document.getElementById('voice-transcript').innerText = interim;
+                renderVoiceCode();
+            };
+            recognition.onerror = e => {
+                document.getElementById('voice-status-text').innerText = 'Erro: ' + (e.error || 'reconhecimento');
+                if (e.error === 'not-allowed' || e.error === 'service-not-allowed') showNotification('Permita o uso do microfone nas configurações do navegador.');
+            };
+            recognition.onend = () => {
+                isRecording = false;
+                document.getElementById('mic-btn-text').innerText = 'Ativar microfone';
+                if (document.getElementById('voice-status-text').innerText === 'Ouvindo…') document.getElementById('voice-status-text').innerText = 'Pausado';
+                document.getElementById('voice-status-text').className = 'text-gray-300';
+            };
+        }
+        function changeVoiceLanguage() {
+            const wasRecording = isRecording;
+            if (recognition && isRecording) recognition.stop();
+            recognition = null;
+            if (wasRecording) setTimeout(() => toggleVoiceCoding(), 250);
+        }
+        function toggleVoiceCoding() {
+            if (!recognition) initVoiceRecognition();
+            if (!recognition) return;
+            if (isRecording) recognition.stop();
+            else { try { recognition.lang = document.getElementById('voice-language')?.value || 'pt-BR'; recognition.start(); } catch(e) { showNotification('O microfone já está ativo ou indisponível.'); } }
+        }
+        function convertSpeechChunk(text) {
+            const original = String(text || '').trim();
+            const naturalPrint = original.match(/^(?:print|imprimir)\s+(.+)$/i);
+            if (naturalPrint && !/(open|close|parenthesis|quotation|quote|aspas|parênteses|parenteses|nova linha|new line|comma|vírgula|virgula|colon|dois pontos)/i.test(naturalPrint[1])) {
+                const spokenText = naturalPrint[1].replace(/[\"']/g, '').trim();
+                return (voiceAccumulatedCode && !/[\n(]$/.test(voiceAccumulatedCode) ? '\n' : '') + 'print(' + JSON.stringify(spokenText) + ')';
+            }
+            let code = ' ' + original.toLowerCase() + ' ';
+            const map = [
+                [/\b(open|open the) parenthesis(es)?\b|\b(abrir|abre|abrir o|abre o) (parenteses|parênteses)\b|\b(parenteses|parênteses) aberto(s)?\b/g, '('],
+                [/\b(close|close the) parenthesis(es)?\b|\b(fechar|fecha|feche|fecha o|fechar o) (parenteses|parênteses)\b|\b(parenteses|parênteses) fechado(s)?\b/g, ')'],
+                [/\b(open|double) quotation marks?\b|\bquote marks?\b|\baspas duplas\b|\baspas\b/g, '"'], [/\b(single) quotation marks?\b|\baspas simples\b/g, "'"],
+                [/\b(new line|next line|line break|nova linha|linha de baixo|próxima linha|proxima linha)\b/g, '\n'],
+                [/\b(delete|remove|apagar) (the )?(word|palavra)\b/g, '__DELETE_WORD__'], [/\b(delete|remove|apagar) (the )?(line|linha)\b/g, '__DELETE_LINE__'],
+                [/\b(clear|erase|limpar) (the )?(code|código|codigo)\b/g, '__CLEAR__'],
+                [/\b(define|create|definir|criar) (a )?(function|função|funcao)\b/g, 'def'], [/\b(print|printe|prin|imprimir)\b/g, 'print'],
+                [/\b(return|retornar|retorne)\b/g, 'return'], [/\b(if|se)\b/g, 'if'], [/\b(else|senão|senao)\b/g, 'else'], [/\b(elif|else if|senão se|senao se)\b/g, 'elif'],
+                [/\b(for each|for|para cada|para)\b/g, 'for'], [/\b(while|enquanto)\b/g, 'while'], [/\b(class|classe)\b/g, 'class'],
+                [/\b(true|verdadeiro)\b/g, 'True'], [/\b(false|falso)\b/g, 'False'], [/\b(none|null|nulo)\b/g, 'None'],
+                [/\b(assign|equals|equal to|recebe|igual a|igual|atribuir)\b/g, '='], [/\b(less than or equal to|menor ou igual a)\b/g, '<='],
+                [/\b(greater than or equal to|maior ou igual a)\b/g, '>='], [/\b(less than|menor que)\b/g, '<'], [/\b(greater than|maior que)\b/g, '>'],
+                [/\b(plus|mais)\b/g, '+'], [/\b(minus|menos)\b/g, '-'], [/\b(times|multiplied by|vezes)\b/g, '*'],
+                [/\b(divided by|dividido por)\b/g, '/'], [/\b(colon|two points|dois pontos)\b/g, ':'], [/\b(comma|vírgula|virgula)\b/g, ','],
+                [/\b(and|e lógico|e logico)\b/g, 'and'], [/\b(or|ou lógico|ou logico)\b/g, 'or'], [/\b(not|não lógico|nao logico)\b/g, 'not']
+            ];
+            for (const [pattern, value] of map) code = code.replace(pattern, value);
+            if (code.includes('__DELETE_WORD__')) { voiceDeleteWord(); return ''; }
+            if (code.includes('__DELETE_LINE__')) { voiceDeleteLine(); return ''; }
+            if (code.includes('__CLEAR__')) { voiceClear(); return ''; }
+            code = code.replace(/\s*([=+*/<>])\s*/g, ' $1 ').replace(/[ \t]+/g, ' ').trim();
+            if (!code) return '';
+            const current = voiceAccumulatedCode;
+            if (code === '(' || code === ')' || code === ',' || code === ':' || code === '"' || code === "'") return code;
+            return (current && !/[\n(]$/.test(current) ? ' ' : '') + code;
+        }
+        function renderVoiceCode() { document.getElementById('voice-code-output').innerText = voiceAccumulatedCode || '# O código Python gerado por voz aparecerá aqui...'; }
+        function voiceInsert(value) { voiceAccumulatedCode += value === '\n' ? '\n' : value; renderVoiceCode(); }
+        function voiceDeleteWord() { voiceAccumulatedCode = voiceAccumulatedCode.replace(/\s*\S+\s*$/, ''); renderVoiceCode(); }
+        function voiceDeleteLine() { voiceAccumulatedCode = voiceAccumulatedCode.replace(/(?:^|\n)[^\n]*$/, ''); renderVoiceCode(); }
+        function voiceClear() { voiceAccumulatedCode = ''; document.getElementById('voice-transcript').innerText = 'Código apagado. Pode começar novamente.'; renderVoiceCode(); }
+        function clearVoiceTerminal() { document.getElementById('voice-terminal-output').innerText = 'Terminal da voz limpo.'; }
+        function transferVoiceToEditor() {
+            if (!voiceAccumulatedCode.trim()) { showNotification('Ainda não há código gerado por voz.'); return; }
+            const current = getEditorValue(); setEditorValue(current + (current.trim() ? '\n' : '') + voiceAccumulatedCode);
+            virtualFiles[currentFile] = getEditorValue(); setActiveTab('editor'); if (monacoEditor) monacoEditor.focus();
+        }
+        async function runVoiceCode() {
+            if (!voiceAccumulatedCode.trim()) { showNotification('Fale ou dite um código antes de executar.'); return; }
+            await executePythonCode(voiceAccumulatedCode, 'voice-terminal-output', 'voice_main.py');
+        }
+
+        function toggleFileMenu() { document.getElementById('file-menu').classList.toggle('hidden'); }
+        function refreshFileExplorer() {
+            const aside = document.querySelector('#tab-editor aside');
+            const list = aside && Array.from(aside.children).find(el => el.classList.contains('flex-col') && el.classList.contains('space-y-0.5'));
+            if (!list) return;
+            list.innerHTML = '';
+            Object.keys(virtualFiles).forEach(name => {
+                const item = document.createElement('button');
+                item.type = 'button'; item.className = 'file-item w-full text-left px-6 py-1.5 text-gray-400 hover:bg-vscode-activity flex items-center gap-2 cursor-pointer';
+                item.id = 'file-' + name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g,'-');
+                const ico = document.createElement('i'); ico.className = name.endsWith('.py') ? 'fab fa-python text-yellow-400' : 'far fa-file text-blue-300';
+                item.append(ico, document.createTextNode(' ' + name)); item.onclick = () => switchFile(name); list.appendChild(item);
+            });
+            const active = document.getElementById('file-' + currentFile.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g,'-'));
+            if (active) active.classList.add('bg-vscode-bg','text-white','border-l-2','border-vscode-blue');
+        }
+        function newUserFile() {
+            let name = prompt('Nome do novo arquivo (ex.: main.py):', 'novo_arquivo.py'); if (!name) return;
+            name = name.trim().replace(/[\\/:*?"<>|]/g, '_'); if (!name) return;
+            if (!/\.[a-zA-Z0-9]{1,8}$/.test(name)) name += '.py';
+            if (Object.prototype.hasOwnProperty.call(virtualFiles, name)) { showNotification('Já existe um arquivo com esse nome.'); return; }
+            virtualFiles[currentFile] = getEditorValue(); virtualFiles[name] = '';
+            refreshFileExplorer(); switchFile(name); document.getElementById('file-menu').classList.add('hidden');
+        }
+        function removeCurrentFile() {
+            if (Object.keys(virtualFiles).length <= 1) { showNotification('Mantenha pelo menos um arquivo no projeto.'); return; }
+            if (!confirm('Remover ' + currentFile + ' do projeto atual?')) return;
+            delete virtualFiles[currentFile]; currentFile = Object.keys(virtualFiles)[0]; refreshFileExplorer(); switchFile(currentFile); persistVirtualFiles();
+        }
+        async function saveCurrentFile() {
+            virtualFiles[currentFile] = getEditorValue(); persistVirtualFiles();
+            const content = virtualFiles[currentFile];
+            try {
+                if (window.showSaveFilePicker) {
+                    const handle = await window.showSaveFilePicker({ suggestedName: currentFile, types: [{ description: 'Arquivo de texto/código', accept: { 'text/plain': ['.' + (currentFile.split('.').pop() || 'py')] } }] });
+                    const writable = await handle.createWritable(); await writable.write(content); await writable.close();
+                    document.getElementById('file-menu').classList.add('hidden'); showNotification('Arquivo salvo.'); return;
+                }
+            } catch (err) {
+                if (err && err.name === 'AbortError') return;
+            }
+            const blob = new Blob([content], {type:'text/plain;charset=utf-8'});
+            const url = URL.createObjectURL(blob), a = document.createElement('a');
+            a.href = url; a.download = currentFile; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+            document.getElementById('file-menu').classList.add('hidden'); showNotification('Download do arquivo iniciado.');
+        }
+        function exportProject() {
+            virtualFiles[currentFile] = getEditorValue(); persistVirtualFiles();
+            const project = { format: 'PyCodeStudioProject', version: 1, currentFile, files: virtualFiles };
+            const blob = new Blob([JSON.stringify(project, null, 2)], {type:'application/json;charset=utf-8'});
+            const url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = 'pycode-studio-project.json'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+            document.getElementById('file-menu').classList.add('hidden'); showNotification('Projeto completo exportado.');
+        }
+        async function importUserFile(event) {
+            const file = event.target.files && event.target.files[0]; if (!file) return;
+            try {
+                const content = await file.text();
+                if (file.name.toLowerCase().endsWith('.json')) {
+                    try {
+                        const parsed = JSON.parse(content);
+                        if (parsed && parsed.format === 'PyCodeStudioProject' && parsed.files && typeof parsed.files === 'object') {
+                            Object.entries(parsed.files).forEach(([name, value]) => { if (typeof value === 'string') virtualFiles[name] = value; });
+                            currentFile = Object.prototype.hasOwnProperty.call(virtualFiles, parsed.currentFile) ? parsed.currentFile : Object.keys(virtualFiles)[0];
+                            refreshFileExplorer(); switchFile(currentFile); persistVirtualFiles(); showNotification('Projeto importado com os arquivos e conteúdos.');
+                            document.getElementById('file-menu').classList.add('hidden'); return;
+                        }
+                    } catch (_) { /* Importar como arquivo de texto comum se não for um projeto PyCode. */ }
+                }
+                virtualFiles[file.name] = content; refreshFileExplorer(); switchFile(file.name); persistVirtualFiles();
+                showNotification('Arquivo importado com todo o conteúdo textual: ' + file.name);
+            } catch (err) { showNotification('Não foi possível ler este arquivo como texto.'); }
+            finally { event.target.value = ''; document.getElementById('file-menu').classList.add('hidden'); }
+        }
+
+        const extraDocs = [
+            ['input()', 'Lê um texto digitado pelo usuário.', 'nome = input("Seu nome: ")\\nprint(nome)', 'Entrada/Saída'],
+            ['int() / float()', 'Convertem valores para números.', 'idade = int("18")\\npreco = float("9.5")', 'Conversão'],
+            ['str() / bool()', 'Convertem valores para texto ou booleano.', 'print(str(123))\\nprint(bool(1))', 'Conversão'],
+            ['sum()', 'Soma itens numéricos.', 'print(sum([2, 3, 4]))', 'Função nativa'],
+            ['min() / max()', 'Retornam o menor ou maior item.', 'print(min([4, 1, 9]))\\nprint(max([4, 1, 9]))', 'Função nativa'],
+            ['enumerate()', 'Fornece índice e item na iteração.', 'for i, fruta in enumerate(["uva", "pera"]):\\n    print(i, fruta)', 'Iteração'],
+            ['zip()', 'Combina iteráveis posição a posição.', 'for nome, nota in zip(["Ana", "Bia"], [8, 9]):\\n    print(nome, nota)', 'Iteração'],
+            ['sorted()', 'Cria uma lista ordenada.', 'print(sorted([3, 1, 2]))', 'Ordenação'],
+            ['abs() / round()', 'Calculam valor absoluto e arredondamento.', 'print(abs(-7))\\nprint(round(3.14159, 2))', 'Matemática'],
+            ['all() / any()', 'Testam se todos ou algum item é verdadeiro.', 'print(all([True, True]))\\nprint(any([False, True]))', 'Booleanos'],
+            ['try / except', 'Permite tratar exceções.', 'try:\\n    numero = int("abc")\\nexcept ValueError:\\n    print("Valor inválido")', 'Exceções'],
+            ['while', 'Repete enquanto a condição for verdadeira.', 'n = 0\\nwhile n < 3:\\n    print(n)\\n    n += 1', 'Repetição'],
+            ['break / continue', 'Interrompem ou avançam no laço.', 'for n in range(5):\\n    if n == 2: continue\\n    if n == 4: break\\n    print(n)', 'Controle de fluxo'],
+            ['set() / tuple()', 'Conjunto sem duplicatas e tupla imutável.', 'print(set([1, 1, 2]))\\nponto = (10, 20)\\nprint(ponto[0])', 'Estruturas de dados'],
+            ['dict.get()', 'Lê uma chave com valor padrão opcional.', 'pessoa = {"nome": "Ana"}\\nprint(pessoa.get("idade", 0))', 'Dicionários'],
+            ['list.pop()', 'Remove e retorna item da lista.', 'itens = [1, 2, 3]\\nprint(itens.pop())', 'Listas'],
+            ['str.split() / strip()', 'Divide texto ou remove espaços das extremidades.', 'print("a,b,c".split(","))\\nprint("  oi  ".strip())', 'Strings'],
+            ['str.replace()', 'Substitui um trecho de texto.', 'print("banana".replace("a", "o"))', 'Strings'],
+            ['f-string', 'Insere valores em texto usando chaves.', 'nome = "Ana"\\nprint(f"Olá, {nome}!")', 'Strings'],
+            ['lambda', 'Define uma função anônima simples.', 'dobro = lambda n: n * 2\\nprint(dobro(4))', 'Funções'],
+            ['class', 'Define uma classe.', 'class Pessoa:\\n    def __init__(self, nome):\\n        self.nome = nome\\np = Pessoa("Ana")\\nprint(p.nome)', 'Orientação a objetos'],
+            ['import', 'Importa módulos.', 'import math\\nprint(math.sqrt(16))', 'Módulos'],
+            ['with open()', 'Abre arquivo e gerencia o recurso automaticamente.', 'with open("exemplo.txt", "w", encoding="utf-8") as arquivo:\\n    arquivo.write("Olá")', 'Arquivos'],
+            ['and / or / not', 'Operadores lógicos.', 'print(5 > 2 and 3 > 1)\\nprint(not False)', 'Operadores'],
+            ['is / in', 'Verifica identidade ou pertencimento.', 'print("p" in "python")', 'Operadores'],
+            ['None', 'Representa ausência de valor.', 'resultado = None\\nprint(resultado is None)', 'Valores especiais']
+        ];
+        // Catálogo pesquisável da referência Python: funções nativas, palavras-chave, métodos de tipos e módulos padrão.
+        const pythonBuiltins = ["ArithmeticError", "AssertionError", "AttributeError", "BaseException", "BaseExceptionGroup", "BlockingIOError", "BrokenPipeError", "BufferError", "BytesWarning", "ChildProcessError", "ConnectionAbortedError", "ConnectionError", "ConnectionRefusedError", "ConnectionResetError", "DeprecationWarning", "EOFError", "Ellipsis", "EncodingWarning", "EnvironmentError", "Exception", "ExceptionGroup", "False", "FileExistsError", "FileNotFoundError", "FloatingPointError", "FutureWarning", "GeneratorExit", "IOError", "ImportError", "ImportWarning", "IndentationError", "IndexError", "InterruptedError", "IsADirectoryError", "KeyError", "KeyboardInterrupt", "LookupError", "MemoryError", "ModuleNotFoundError", "NameError", "None", "NotADirectoryError", "NotImplemented", "NotImplementedError", "OSError", "OverflowError", "PendingDeprecationWarning", "PermissionError", "ProcessLookupError", "PythonFinalizationError", "RecursionError", "ReferenceError", "ResourceWarning", "RuntimeError", "RuntimeWarning", "StopAsyncIteration", "StopIteration", "SyntaxError", "SyntaxWarning", "SystemError", "SystemExit", "TabError", "TimeoutError", "True", "TypeError", "UnboundLocalError", "UnicodeDecodeError", "UnicodeEncodeError", "UnicodeError", "UnicodeTranslateError", "UnicodeWarning", "UserWarning", "ValueError", "Warning", "ZeroDivisionError", "abs", "aiter", "all", "anext", "any", "ascii", "bin", "bool", "breakpoint", "bytearray", "bytes", "callable", "chr", "classmethod", "compile", "complex", "copyright", "credits", "delattr", "dict", "dir", "divmod", "enumerate", "eval", "exec", "exit", "filter", "float", "format", "frozenset", "getattr", "globals", "hasattr", "hash", "help", "hex", "id", "input", "int", "isinstance", "issubclass", "iter", "len", "license", "list", "locals", "map", "max", "memoryview", "min", "next", "object", "oct", "open", "ord", "pow", "print", "property", "quit", "range", "repr", "reversed", "round", "set", "setattr", "slice", "sorted", "staticmethod", "str", "sum", "super", "tuple", "type", "vars", "zip"];
+        const pythonKeywords = ["False", "None", "True", "and", "as", "assert", "async", "await", "break", "class", "continue", "def", "del", "elif", "else", "except", "finally", "for", "from", "global", "if", "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise", "return", "try", "while", "with", "yield", "_", "case", "match", "type"];
+        const pythonStdlibModules = ["__future__", "_abc", "_aix_support", "_android_support", "_apple_support", "_ast", "_asyncio", "_bisect", "_blake2", "_bz2", "_codecs", "_codecs_cn", "_codecs_hk", "_codecs_iso2022", "_codecs_jp", "_codecs_kr", "_codecs_tw", "_collections", "_collections_abc", "_colorize", "_compat_pickle", "_compression", "_contextvars", "_csv", "_ctypes", "_curses", "_curses_panel", "_datetime", "_dbm", "_decimal", "_elementtree", "_frozen_importlib", "_frozen_importlib_external", "_functools", "_gdbm", "_hashlib", "_heapq", "_imp", "_interpchannels", "_interpqueues", "_interpreters", "_io", "_ios_support", "_json", "_locale", "_lsprof", "_lzma", "_markupbase", "_md5", "_multibytecodec", "_multiprocessing", "_opcode", "_opcode_metadata", "_operator", "_osx_support", "_overlapped", "_pickle", "_posixshmem", "_posixsubprocess", "_py_abc", "_pydatetime", "_pydecimal", "_pyio", "_pylong", "_pyrepl", "_queue", "_random", "_scproxy", "_sha1", "_sha2", "_sha3", "_signal", "_sitebuiltins", "_socket", "_sqlite3", "_sre", "_ssl", "_stat", "_statistics", "_string", "_strptime", "_struct", "_suggestions", "_symtable", "_sysconfig", "_thread", "_threading_local", "_tkinter", "_tokenize", "_tracemalloc", "_typing", "_uuid", "_warnings", "_weakref", "_weakrefset", "_winapi", "_wmi", "_zoneinfo", "abc", "antigravity", "argparse", "array", "ast", "asyncio", "atexit", "base64", "bdb", "binascii", "bisect", "builtins", "bz2", "cProfile", "calendar", "cmath", "cmd", "code", "codecs", "codeop", "collections", "colorsys", "compileall", "concurrent", "configparser", "contextlib", "contextvars", "copy", "copyreg", "csv", "ctypes", "curses", "dataclasses", "datetime", "dbm", "decimal", "difflib", "dis", "doctest", "email", "encodings", "ensurepip", "enum", "errno", "faulthandler", "fcntl", "filecmp", "fileinput", "fnmatch", "fractions", "ftplib", "functools", "gc", "genericpath", "getopt", "getpass", "gettext", "glob", "graphlib", "grp", "gzip", "hashlib", "heapq", "hmac", "html", "http", "idlelib", "imaplib", "importlib", "inspect", "io", "ipaddress", "itertools", "json", "keyword", "linecache", "locale", "logging", "lzma", "mailbox", "marshal", "math", "mimetypes", "mmap", "modulefinder", "msvcrt", "multiprocessing", "netrc", "nt", "ntpath", "nturl2path", "numbers", "opcode", "operator", "optparse", "os", "pathlib", "pdb", "pickle", "pickletools", "pkgutil", "platform", "plistlib", "poplib", "posix", "posixpath", "pprint", "profile", "pstats", "pty", "pwd", "py_compile", "pyclbr", "pydoc", "pydoc_data", "pyexpat", "queue", "quopri", "random", "re", "readline", "reprlib", "resource", "rlcompleter", "runpy", "sched", "secrets", "select", "selectors", "shelve", "shlex", "shutil", "signal", "site", "smtplib", "socket", "socketserver", "sqlite3", "sre_compile", "sre_constants", "sre_parse", "ssl", "stat", "statistics", "string", "stringprep", "struct", "subprocess", "symtable", "sys", "sysconfig", "syslog", "tabnanny", "tarfile", "tempfile", "termios", "textwrap", "this", "threading", "time", "timeit", "tkinter", "token", "tokenize", "tomllib", "trace", "traceback", "tracemalloc", "tty", "turtle", "turtledemo", "types", "typing", "unicodedata", "unittest", "urllib", "uuid", "venv", "warnings", "wave", "weakref", "webbrowser", "winreg", "winsound", "wsgiref", "xml", "xmlrpc", "zipapp", "zipfile", "zipimport", "zlib", "zoneinfo"];
+        const pythonTypeMethods = {"str": ["__add__", "__class__", "__contains__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getitem__", "__getnewargs__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__len__", "__lt__", "__mod__", "__mul__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__rmod__", "__rmul__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__", "capitalize", "casefold", "center", "count", "encode", "endswith", "expandtabs", "find", "format", "format_map", "index", "isalnum", "isalpha", "isascii", "isdecimal", "isdigit", "isidentifier", "islower", "isnumeric", "isprintable", "isspace", "istitle", "isupper", "join", "ljust", "lower", "lstrip", "maketrans", "partition", "removeprefix", "removesuffix", "replace", "rfind", "rindex", "rjust", "rpartition", "rsplit", "rstrip", "split", "splitlines", "startswith", "strip", "swapcase", "title", "translate", "upper", "zfill"], "list": ["__add__", "__class__", "__class_getitem__", "__contains__", "__delattr__", "__delitem__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getitem__", "__getstate__", "__gt__", "__hash__", "__iadd__", "__imul__", "__init__", "__init_subclass__", "__iter__", "__le__", "__len__", "__lt__", "__mul__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__reversed__", "__rmul__", "__setattr__", "__setitem__", "__sizeof__", "__str__", "__subclasshook__", "append", "clear", "copy", "count", "extend", "index", "insert", "pop", "remove", "reverse", "sort"], "tuple": ["__add__", "__class__", "__class_getitem__", "__contains__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getitem__", "__getnewargs__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__len__", "__lt__", "__mul__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__rmul__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__", "count", "index"], "dict": ["__class__", "__class_getitem__", "__contains__", "__delattr__", "__delitem__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getitem__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__ior__", "__iter__", "__le__", "__len__", "__lt__", "__ne__", "__new__", "__or__", "__reduce__", "__reduce_ex__", "__repr__", "__reversed__", "__ror__", "__setattr__", "__setitem__", "__sizeof__", "__str__", "__subclasshook__", "clear", "copy", "fromkeys", "get", "items", "keys", "pop", "popitem", "setdefault", "update", "values"], "set": ["__and__", "__class__", "__class_getitem__", "__contains__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__iand__", "__init__", "__init_subclass__", "__ior__", "__isub__", "__iter__", "__ixor__", "__le__", "__len__", "__lt__", "__ne__", "__new__", "__or__", "__rand__", "__reduce__", "__reduce_ex__", "__repr__", "__ror__", "__rsub__", "__rxor__", "__setattr__", "__sizeof__", "__str__", "__sub__", "__subclasshook__", "__xor__", "add", "clear", "copy", "difference", "difference_update", "discard", "intersection", "intersection_update", "isdisjoint", "issubset", "issuperset", "pop", "remove", "symmetric_difference", "symmetric_difference_update", "union", "update"], "frozenset": ["__and__", "__class__", "__class_getitem__", "__contains__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__len__", "__lt__", "__ne__", "__new__", "__or__", "__rand__", "__reduce__", "__reduce_ex__", "__repr__", "__ror__", "__rsub__", "__rxor__", "__setattr__", "__sizeof__", "__str__", "__sub__", "__subclasshook__", "__xor__", "copy", "difference", "intersection", "isdisjoint", "issubset", "issuperset", "symmetric_difference", "union"], "int": ["__abs__", "__add__", "__and__", "__bool__", "__ceil__", "__class__", "__delattr__", "__dir__", "__divmod__", "__doc__", "__eq__", "__float__", "__floor__", "__floordiv__", "__format__", "__ge__", "__getattribute__", "__getnewargs__", "__getstate__", "__gt__", "__hash__", "__index__", "__init__", "__init_subclass__", "__int__", "__invert__", "__le__", "__lshift__", "__lt__", "__mod__", "__mul__", "__ne__", "__neg__", "__new__", "__or__", "__pos__", "__pow__", "__radd__", "__rand__", "__rdivmod__", "__reduce__", "__reduce_ex__", "__repr__", "__rfloordiv__", "__rlshift__", "__rmod__", "__rmul__", "__ror__", "__round__", "__rpow__", "__rrshift__", "__rshift__", "__rsub__", "__rtruediv__", "__rxor__", "__setattr__", "__sizeof__", "__str__", "__sub__", "__subclasshook__", "__truediv__", "__trunc__", "__xor__", "as_integer_ratio", "bit_count", "bit_length", "conjugate", "denominator", "from_bytes", "imag", "is_integer", "numerator", "real", "to_bytes"], "float": ["__abs__", "__add__", "__bool__", "__ceil__", "__class__", "__delattr__", "__dir__", "__divmod__", "__doc__", "__eq__", "__float__", "__floor__", "__floordiv__", "__format__", "__ge__", "__getattribute__", "__getformat__", "__getnewargs__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__int__", "__le__", "__lt__", "__mod__", "__mul__", "__ne__", "__neg__", "__new__", "__pos__", "__pow__", "__radd__", "__rdivmod__", "__reduce__", "__reduce_ex__", "__repr__", "__rfloordiv__", "__rmod__", "__rmul__", "__round__", "__rpow__", "__rsub__", "__rtruediv__", "__setattr__", "__sizeof__", "__str__", "__sub__", "__subclasshook__", "__truediv__", "__trunc__", "as_integer_ratio", "conjugate", "fromhex", "hex", "imag", "is_integer", "real"], "complex": ["__abs__", "__add__", "__bool__", "__class__", "__complex__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getnewargs__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__le__", "__lt__", "__mul__", "__ne__", "__neg__", "__new__", "__pos__", "__pow__", "__radd__", "__reduce__", "__reduce_ex__", "__repr__", "__rmul__", "__rpow__", "__rsub__", "__rtruediv__", "__setattr__", "__sizeof__", "__str__", "__sub__", "__subclasshook__", "__truediv__", "conjugate", "imag", "real"], "bool": ["__abs__", "__add__", "__and__", "__bool__", "__ceil__", "__class__", "__delattr__", "__dir__", "__divmod__", "__doc__", "__eq__", "__float__", "__floor__", "__floordiv__", "__format__", "__ge__", "__getattribute__", "__getnewargs__", "__getstate__", "__gt__", "__hash__", "__index__", "__init__", "__init_subclass__", "__int__", "__invert__", "__le__", "__lshift__", "__lt__", "__mod__", "__mul__", "__ne__", "__neg__", "__new__", "__or__", "__pos__", "__pow__", "__radd__", "__rand__", "__rdivmod__", "__reduce__", "__reduce_ex__", "__repr__", "__rfloordiv__", "__rlshift__", "__rmod__", "__rmul__", "__ror__", "__round__", "__rpow__", "__rrshift__", "__rshift__", "__rsub__", "__rtruediv__", "__rxor__", "__setattr__", "__sizeof__", "__str__", "__sub__", "__subclasshook__", "__truediv__", "__trunc__", "__xor__", "as_integer_ratio", "bit_count", "bit_length", "conjugate", "denominator", "from_bytes", "imag", "is_integer", "numerator", "real", "to_bytes"], "bytes": ["__add__", "__buffer__", "__bytes__", "__class__", "__contains__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getitem__", "__getnewargs__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__len__", "__lt__", "__mod__", "__mul__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__rmod__", "__rmul__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__", "capitalize", "center", "count", "decode", "endswith", "expandtabs", "find", "fromhex", "hex", "index", "isalnum", "isalpha", "isascii", "isdigit", "islower", "isspace", "istitle", "isupper", "join", "ljust", "lower", "lstrip", "maketrans", "partition", "removeprefix", "removesuffix", "replace", "rfind", "rindex", "rjust", "rpartition", "rsplit", "rstrip", "split", "splitlines", "startswith", "strip", "swapcase", "title", "translate", "upper", "zfill"], "bytearray": ["__add__", "__alloc__", "__buffer__", "__class__", "__contains__", "__delattr__", "__delitem__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getitem__", "__getstate__", "__gt__", "__hash__", "__iadd__", "__imul__", "__init__", "__init_subclass__", "__iter__", "__le__", "__len__", "__lt__", "__mod__", "__mul__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__release_buffer__", "__repr__", "__rmod__", "__rmul__", "__setattr__", "__setitem__", "__sizeof__", "__str__", "__subclasshook__", "append", "capitalize", "center", "clear", "copy", "count", "decode", "endswith", "expandtabs", "extend", "find", "fromhex", "hex", "index", "insert", "isalnum", "isalpha", "isascii", "isdigit", "islower", "isspace", "istitle", "isupper", "join", "ljust", "lower", "lstrip", "maketrans", "partition", "pop", "remove", "removeprefix", "removesuffix", "replace", "reverse", "rfind", "rindex", "rjust", "rpartition", "rsplit", "rstrip", "split", "splitlines", "startswith", "strip", "swapcase", "title", "translate", "upper", "zfill"], "range": ["__bool__", "__class__", "__contains__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getitem__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__len__", "__lt__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__reversed__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__", "count", "index", "start", "step", "stop"], "memoryview": ["__buffer__", "__class__", "__delattr__", "__delitem__", "__dir__", "__doc__", "__enter__", "__eq__", "__exit__", "__format__", "__ge__", "__getattribute__", "__getitem__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__len__", "__lt__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__release_buffer__", "__repr__", "__setattr__", "__setitem__", "__sizeof__", "__str__", "__subclasshook__", "c_contiguous", "cast", "contiguous", "f_contiguous", "format", "hex", "itemsize", "nbytes", "ndim", "obj", "readonly", "release", "shape", "strides", "suboffsets", "tobytes", "tolist", "toreadonly"], "slice": ["__class__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__le__", "__lt__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__", "indices", "start", "step", "stop"], "object": ["__class__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__le__", "__lt__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__"], "type": ["__abstractmethods__", "__annotations__", "__base__", "__bases__", "__basicsize__", "__call__", "__class__", "__delattr__", "__dict__", "__dictoffset__", "__dir__", "__doc__", "__eq__", "__flags__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__instancecheck__", "__itemsize__", "__le__", "__lt__", "__module__", "__mro__", "__name__", "__ne__", "__new__", "__or__", "__prepare__", "__qualname__", "__reduce__", "__reduce_ex__", "__repr__", "__ror__", "__setattr__", "__sizeof__", "__str__", "__subclasscheck__", "__subclasses__", "__subclasshook__", "__text_signature__", "__type_params__", "__weakrefoffset__", "mro"], "BaseException": ["__cause__", "__class__", "__context__", "__delattr__", "__dict__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__le__", "__lt__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__setstate__", "__sizeof__", "__str__", "__subclasshook__", "__suppress_context__", "__traceback__", "add_note", "args", "with_traceback"], "Exception": ["__cause__", "__class__", "__context__", "__delattr__", "__dict__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__le__", "__lt__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__setstate__", "__sizeof__", "__str__", "__subclasshook__", "__suppress_context__", "__traceback__", "add_note", "args", "with_traceback"], "property": ["__class__", "__delattr__", "__delete__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__get__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__isabstractmethod__", "__le__", "__lt__", "__name__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__set__", "__set_name__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__", "deleter", "fdel", "fget", "fset", "getter", "setter"], "staticmethod": ["__call__", "__class__", "__delattr__", "__dict__", "__dir__", "__doc__", "__eq__", "__format__", "__func__", "__ge__", "__get__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__isabstractmethod__", "__le__", "__lt__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__", "__wrapped__"], "classmethod": ["__class__", "__delattr__", "__dict__", "__dir__", "__doc__", "__eq__", "__format__", "__func__", "__ge__", "__get__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__isabstractmethod__", "__le__", "__lt__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__", "__wrapped__"], "enumerate": ["__class__", "__class_getitem__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__lt__", "__ne__", "__new__", "__next__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__"], "zip": ["__class__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__lt__", "__ne__", "__new__", "__next__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__setstate__", "__sizeof__", "__str__", "__subclasshook__"], "map": ["__class__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__lt__", "__ne__", "__new__", "__next__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__"], "filter": ["__class__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__lt__", "__ne__", "__new__", "__next__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__"], "reversed": ["__class__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__length_hint__", "__lt__", "__ne__", "__new__", "__next__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__setstate__", "__sizeof__", "__str__", "__subclasshook__"], "super": ["__class__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__get__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__le__", "__lt__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__self__", "__self_class__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__", "__thisclass__"], "module": ["__annotations__", "__class__", "__delattr__", "__dict__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__le__", "__lt__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__"], "function": ["__annotations__", "__builtins__", "__call__", "__class__", "__closure__", "__code__", "__defaults__", "__delattr__", "__dict__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__get__", "__getattribute__", "__getstate__", "__globals__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__kwdefaults__", "__le__", "__lt__", "__module__", "__name__", "__ne__", "__new__", "__qualname__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__", "__type_params__"], "code": ["__class__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__le__", "__lt__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__replace__", "__repr__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__", "co_argcount", "co_cellvars", "co_code", "co_consts", "co_exceptiontable", "co_filename", "co_firstlineno", "co_flags", "co_freevars", "co_kwonlyargcount", "co_lines", "co_linetable", "co_lnotab", "co_name", "co_names", "co_nlocals", "co_positions", "co_posonlyargcount", "co_qualname", "co_stacksize", "co_varnames", "replace"], "generator": ["__class__", "__class_getitem__", "__del__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__lt__", "__name__", "__ne__", "__new__", "__next__", "__qualname__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__", "close", "gi_code", "gi_frame", "gi_running", "gi_suspended", "gi_yieldfrom", "send", "throw"], "coroutine": ["__await__", "__class__", "__class_getitem__", "__del__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__le__", "__lt__", "__name__", "__ne__", "__new__", "__qualname__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__", "close", "cr_await", "cr_code", "cr_frame", "cr_origin", "cr_running", "cr_suspended", "send", "throw"], "TextIOBase": ["__abstractmethods__", "__class__", "__del__", "__delattr__", "__dict__", "__dir__", "__doc__", "__enter__", "__eq__", "__exit__", "__firstlineno__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__lt__", "__module__", "__ne__", "__new__", "__next__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__static_attributes__", "__str__", "__subclasshook__", "close", "closed", "detach", "encoding", "errors", "fileno", "flush", "isatty", "newlines", "read", "readable", "readline", "readlines", "seek", "seekable", "tell", "truncate", "writable", "write", "writelines"], "BufferedIOBase": ["__abstractmethods__", "__class__", "__del__", "__delattr__", "__dict__", "__dir__", "__doc__", "__enter__", "__eq__", "__exit__", "__firstlineno__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__lt__", "__module__", "__ne__", "__new__", "__next__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__static_attributes__", "__str__", "__subclasshook__", "close", "closed", "detach", "fileno", "flush", "isatty", "read", "read1", "readable", "readinto", "readinto1", "readline", "readlines", "seek", "seekable", "tell", "truncate", "writable", "write", "writelines"], "RawIOBase": ["__abstractmethods__", "__class__", "__del__", "__delattr__", "__dict__", "__dir__", "__doc__", "__enter__", "__eq__", "__exit__", "__firstlineno__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__lt__", "__module__", "__ne__", "__new__", "__next__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__static_attributes__", "__str__", "__subclasshook__", "close", "closed", "fileno", "flush", "isatty", "read", "readable", "readall", "readinto", "readline", "readlines", "seek", "seekable", "tell", "truncate", "writable", "write", "writelines"], "IOBase": ["__abstractmethods__", "__class__", "__del__", "__delattr__", "__dict__", "__dir__", "__doc__", "__enter__", "__eq__", "__exit__", "__firstlineno__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__lt__", "__module__", "__ne__", "__new__", "__next__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__static_attributes__", "__str__", "__subclasshook__", "close", "closed", "fileno", "flush", "isatty", "readable", "readline", "readlines", "seek", "seekable", "tell", "truncate", "writable", "writelines"]};
+        const pythonBuiltinDescriptions = {"print": "Exibe valores no fluxo de saída. Aceita sep, end, file e flush.", "input": "Lê uma linha de texto digitada pelo usuário e a retorna como str.", "len": "Retorna a quantidade de itens de uma sequência ou coleção.", "type": "Retorna o tipo de um objeto; também pode criar classes dinamicamente.", "int": "Converte um valor compatível para inteiro.", "float": "Converte um valor compatível para ponto flutuante.", "str": "Cria uma representação textual de um objeto.", "bool": "Converte um valor para True ou False.", "range": "Representa uma sequência imutável de números, muito usada em laços for.", "enumerate": "Produz pares com índice e item durante uma iteração.", "zip": "Agrupa itens de iteráveis pela mesma posição.", "sum": "Soma os itens de um iterável numérico.", "min": "Retorna o menor item ou argumento.", "max": "Retorna o maior item ou argumento.", "sorted": "Retorna uma nova lista ordenada a partir de um iterável.", "reversed": "Retorna um iterador que percorre os itens na ordem inversa.", "abs": "Retorna o valor absoluto de um número.", "round": "Arredonda um número para a precisão indicada.", "all": "Retorna True se todos os itens forem verdadeiros.", "any": "Retorna True se pelo menos um item for verdadeiro.", "isinstance": "Verifica se um objeto é instância de um tipo ou tupla de tipos.", "issubclass": "Verifica se uma classe deriva de outra classe.", "open": "Abre um arquivo e retorna um objeto de arquivo.", "help": "Exibe o sistema de ajuda interativa do Python.", "dir": "Lista nomes disponíveis em um objeto ou no escopo atual.", "id": "Retorna a identidade de um objeto.", "map": "Aplica uma função a cada item de um ou mais iteráveis.", "filter": "Seleciona itens de um iterável usando uma função de teste.", "pow": "Calcula potência, opcionalmente com módulo.", "divmod": "Retorna quociente e resto da divisão inteira.", "repr": "Retorna uma representação textual útil para depuração.", "format": "Formata um valor usando a especificação de formato.", "vars": "Retorna o atributo __dict__ de um objeto ou o escopo local.", "getattr": "Obtém um atributo de um objeto pelo nome textual.", "setattr": "Define um atributo de um objeto.", "hasattr": "Verifica se um objeto possui determinado atributo.", "delattr": "Remove um atributo de um objeto.", "chr": "Converte um ponto de código Unicode em caractere.", "ord": "Retorna o ponto de código Unicode de um caractere.", "bin": "Converte um inteiro para representação binária textual.", "oct": "Converte um inteiro para representação octal textual.", "hex": "Converte um inteiro para representação hexadecimal textual.", "list": "Cria uma lista mutável.", "tuple": "Cria uma tupla imutável.", "dict": "Cria um dicionário de pares chave-valor.", "set": "Cria um conjunto de itens únicos.", "frozenset": "Cria um conjunto imutável.", "complex": "Cria um número complexo.", "bytes": "Cria uma sequência imutável de bytes.", "bytearray": "Cria uma sequência mutável de bytes.", "callable": "Verifica se um objeto pode ser chamado como função.", "compile": "Compila código-fonte para um objeto de código.", "eval": "Avalia uma expressão Python. Use apenas com código confiável.", "exec": "Executa código Python. Use apenas com código confiável.", "iter": "Obtém um iterador de um objeto iterável.", "next": "Obtém o próximo item de um iterador.", "slice": "Cria um objeto que representa uma fatia.", "memoryview": "Permite acessar a memória de um objeto compatível sem copiar os dados."};
+        const pythonKeywordDescriptions = {
+          'if':'Executa um bloco quando uma condição é verdadeira.','elif':'Testa outra condição se as anteriores forem falsas.','else':'Define o bloco alternativo de uma condição ou laço.','for':'Percorre itens de um iterável.','while':'Repete um bloco enquanto a condição for verdadeira.','def':'Define uma função.','return':'Encerra uma função e pode devolver um valor.','class':'Define uma classe.','import':'Importa um módulo ou pacote.','from':'Importa nomes específicos de um módulo.','try':'Inicia um bloco de tratamento de exceções.','except':'Trata uma exceção.','finally':'Define um bloco executado após try, normalmente para limpeza.','raise':'Dispara uma exceção.','with':'Usa um gerenciador de contexto.','as':'Cria um alias ou nome associado, por exemplo em import/with/except.','pass':'Instrução vazia usada como marcador.','break':'Encerra o laço mais interno.','continue':'Pula para a próxima iteração do laço.','and':'Operador lógico E.','or':'Operador lógico OU.','not':'Inverte o valor lógico.','in':'Testa pertencimento ou participa de laços for.','is':'Testa identidade de objetos.','lambda':'Cria uma função anônima simples.','yield':'Produz um valor em uma função geradora.','async':'Declara uma função ou contexto assíncrono.','await':'Espera o resultado de uma operação awaitable dentro de async.','assert':'Verifica uma condição e dispara AssertionError se falsa.','del':'Remove uma referência, item ou atributo.','global':'Declara que um nome se refere ao escopo global.','nonlocal':'Refere-se a uma variável do escopo externo não global.','match':'Inicia uma instrução de correspondência estrutural.','case':'Define um padrão dentro de match.','True':'Valor booleano verdadeiro.','False':'Valor booleano falso.','None':'Representa ausência de valor.'
+        };
+        const pythonModuleDescriptions = {
+          math:'Funções matemáticas e constantes.', random:'Geração de números pseudoaleatórios.', statistics:'Estatística básica: média, mediana, dispersão.', datetime:'Datas, horários e durações.', time:'Acesso a relógios e pausas.', pathlib:'Caminhos de arquivos e diretórios orientados a objetos.', os:'Interfaces com recursos do sistema operacional.', sys:'Parâmetros e funções do interpretador Python.', json:'Codificação e decodificação JSON.', re:'Expressões regulares para busca e substituição de texto.', csv:'Leitura e escrita de arquivos CSV.', sqlite3:'Banco de dados SQLite embutido.', collections:'Contêineres especializados como Counter e deque.', itertools:'Ferramentas eficientes para iteração.', functools:'Funções utilitárias para funções e chamadas.', subprocess:'Execução e comunicação com processos externos.', threading:'Execução concorrente com threads.', asyncio:'Concorrência assíncrona com async e await.', logging:'Registro estruturado de eventos e mensagens.', argparse:'Análise de argumentos da linha de comando.', unittest:'Estrutura de testes automatizados.', doctest:'Testes baseados em exemplos da documentação.', typing:'Anotações e ferramentas de tipagem.', dataclasses:'Criação de classes para armazenar dados.', decimal:'Aritmética decimal de precisão controlada.', fractions:'Aritmética com números racionais.', hashlib:'Funções de hash criptográfico.', secrets:'Geração de valores aleatórios adequados para segredos.', urllib:'Ferramentas para trabalhar com URLs.', http:'Protocolos e utilitários HTTP.', socket:'Comunicação em rede de baixo nível.', email:'Criação e análise de mensagens de e-mail.', smtplib:'Cliente SMTP para envio de e-mail.', zipfile:'Leitura e criação de arquivos ZIP.', tarfile:'Leitura e criação de arquivos TAR.', gzip:'Compactação e descompactação gzip.', shutil:'Operações de alto nível com arquivos.', tempfile:'Criação de arquivos e diretórios temporários.', glob:'Busca de arquivos usando padrões.', fnmatch:'Correspondência de nomes com padrões.', pickle:'Serialização de objetos Python; não use com dados não confiáveis.', pprint:'Impressão formatada de estruturas de dados.', textwrap:'Quebra e preenchimento de texto.', string:'Constantes e utilitários para texto.', enum:'Criação de enumerações.', copy:'Cópia rasa e profunda de objetos.', heapq:'Fila de prioridade baseada em heap.', bisect:'Busca binária e inserção ordenada.', array:'Vetores compactos de valores numéricos.', xml:'Ferramentas para processar XML.', html:'Utilitários relacionados a HTML.', tkinter:'Interface gráfica de desktop com Tk.', turtle:'Gráficos educacionais com uma tartaruga.', inspect:'Inspeção de objetos, funções e classes.', ast:'Árvore sintática abstrata de código Python.', dis:'Desmontagem de bytecode Python.', pdb:'Depurador interativo do Python.', traceback:'Formatação e análise de rastreamentos de erro.', platform:'Informações sobre sistema operacional e plataforma.', locale:'Configurações regionais e formatação local.', zoneinfo:'Fusos horários IANA.'
+        };
+        const pythonMethodDescriptions = {
+          append:'Adiciona um item ao final de uma lista.', extend:'Adiciona todos os itens de um iterável à lista.', insert:'Insere um item em uma posição da lista.', pop:'Remove e retorna um item.', remove:'Remove a primeira ocorrência de um valor.', sort:'Ordena a lista no próprio objeto.', reverse:'Inverte a ordem dos itens no próprio objeto.', clear:'Remove todos os itens.', copy:'Retorna uma cópia rasa.', count:'Conta ocorrências de um valor.', index:'Retorna o índice da primeira ocorrência.', split:'Divide uma string em uma lista de partes.', splitlines:'Divide o texto em linhas.', strip:'Remove espaços ou caracteres das extremidades.', lstrip:'Remove espaços ou caracteres do início.', rstrip:'Remove espaços ou caracteres do final.', replace:'Retorna uma string com ocorrências substituídas.', join:'Une strings usando o texto atual como separador.', lower:'Retorna o texto em minúsculas.', upper:'Retorna o texto em maiúsculas.', title:'Retorna o texto com iniciais em maiúsculas.', find:'Procura uma substring e retorna seu índice ou -1.', startswith:'Verifica se o texto começa com determinado prefixo.', endswith:'Verifica se o texto termina com determinado sufixo.', get:'Obtém o valor de uma chave, com padrão opcional.', keys:'Retorna uma visão das chaves do dicionário.', values:'Retorna uma visão dos valores do dicionário.', items:'Retorna pares chave-valor do dicionário.', update:'Atualiza um dicionário com novos pares.', setdefault:'Obtém uma chave ou define seu valor padrão.', add:'Adiciona um elemento ao conjunto.', discard:'Remove um elemento do conjunto se estiver presente.', union:'Retorna a união de conjuntos.', intersection:'Retorna a interseção de conjuntos.', difference:'Retorna elementos que estão neste conjunto, mas não no outro.', issubset:'Verifica se o conjunto está contido em outro.', issuperset:'Verifica se contém todos os elementos de outro conjunto.'
+        };
+        function pythonDocsUrl(item) {
+          if (item.kind === 'exception') return 'https://docs.python.org/3/library/exceptions.html#' + encodeURIComponent(item.name);
+          if (item.kind === 'built-in' || item.kind === 'constant') return 'https://docs.python.org/3/library/functions.html#' + encodeURIComponent(item.name.toLowerCase());
+          if (item.kind === 'keyword') return 'https://docs.python.org/3/reference/lexical_analysis.html#keywords';
+          if (item.kind === 'method') return 'https://docs.python.org/3/library/stdtypes.html';
+          if (item.kind === 'module') return 'https://docs.python.org/3/library/' + item.name + '.html';
+          return 'https://docs.python.org/3/search.html?q=' + encodeURIComponent(item.name);
+        }
+        function buildPythonReference() {
+          const docs = [];
+          pythonBuiltins.forEach(name => {
+            let kind = ['True','False','None','Ellipsis','NotImplemented'].includes(name) ? 'constant' : (/Error$|Exception$|Warning$|^BaseException/.test(name) ? 'exception' : 'built-in');
+            let desc = pythonBuiltinDescriptions[name] || (kind === 'exception' ? 'Tipo de exceção usado para sinalizar ou tratar uma categoria de erro.' : kind === 'constant' ? 'Constante especial integrada ao Python.' : 'Nome integrado ao interpretador Python. Consulte a referência oficial para assinatura, parâmetros e exemplos.');
+            const code = ({print:'print("Olá, Python!")',input:'nome = input("Seu nome: ")\nprint(nome)',type:'print(type(123))',len:'print(len([1, 2, 3]))',range:'for i in range(3):\n    print(i)',enumerate:'for indice, item in enumerate(["a", "b"]):\n    print(indice, item)',zip:'for nome, nota in zip(["Ana", "Bia"], [8, 9]):\n    print(nome, nota)',sum:'print(sum([1, 2, 3]))',sorted:'print(sorted([3, 1, 2]))',int:'print(int("42"))',float:'print(float("3.14"))',str:'print(str(123))',bool:'print(bool(1))',isinstance:'print(isinstance(10, int))',abs:'print(abs(-7))',round:'print(round(3.14159, 2))',max:'print(max([3, 8, 2]))',min:'print(min([3, 8, 2]))',open:'with open("exemplo.txt", "w", encoding="utf-8") as arquivo:\n    arquivo.write("Olá")'})[name] || name + (['print','input','len','type','range','sum','max','min','sorted','open'].includes(name) ? '()' : '');
+            docs.push({name, desc, code, kind, category: kind === 'exception' ? 'Exceções' : kind === 'constant' ? 'Constantes' : 'Funções e tipos nativos'});
+          });
+          pythonKeywords.forEach(name => docs.push({name, desc: pythonKeywordDescriptions[name] || 'Palavra-chave da linguagem Python. Consulte a referência oficial para regras de sintaxe e exemplos.', code: ({if:'idade = 18\nif idade >= 18:\n    print("Maior de idade")',for:'for item in [1, 2, 3]:\n    print(item)',def:'def saudar(nome):\n    return f"Olá, {nome}"\n\nprint(saudar("Ana"))',class:'class Pessoa:\n    def __init__(self, nome):\n        self.nome = nome',try:'try:\n    numero = int("abc")\nexcept ValueError:\n    print("Valor inválido")',while:'contador = 0\nwhile contador < 3:\n    print(contador)\n    contador += 1'})[name] || '# Palavra-chave Python: ' + name + '\n# Consulte a referência oficial para regras de sintaxe.', kind:'keyword', category:'Palavras-chave'}));
+          Object.entries(pythonTypeMethods).forEach(([type, methods]) => methods.forEach(method => docs.push({name:type + '.' + method, desc:pythonMethodDescriptions[method] || 'Método de ' + type + '. Consulte a documentação oficial para parâmetros e comportamento exato.', code:({ 'str.split':'print("a,b,c".split(","))','str.strip':'print("  olá  ".strip())','str.replace':'print("banana".replace("a", "o"))','str.lower':'print("PYTHON".lower())','str.upper':'print("python".upper())','list.append':'itens = [1, 2]\nitens.append(3)\nprint(itens)','list.pop':'itens = [1, 2, 3]\nprint(itens.pop())','dict.get':'pessoa = {"nome": "Ana"}\nprint(pessoa.get("idade", 0))','dict.items':'pessoa = {"nome": "Ana", "idade": 20}\nfor chave, valor in pessoa.items():\n    print(chave, valor)','set.add':'valores = {1, 2}\nvalores.add(3)\nprint(valores)'})[type + '.' + method] || '# Exemplo de uso: ' + type + '.' + method + '(...)\n# Consulte a referência oficial para os parâmetros exigidos.', kind:'method', category:'Métodos de tipos'})));
+          pythonStdlibModules.forEach(name => {
+            if (name.startsWith('_')) return;
+            docs.push({name, desc:(pythonModuleDescriptions[name] || 'Módulo da biblioteca padrão do Python. Consulte a página oficial para classes, funções, constantes e exemplos.') + ' A disponibilidade de alguns módulos depende do ambiente e pode variar no Python executado no navegador.', code:'import ' + name + '\nprint("Módulo ' + name + ' importado")', kind:'module', category:'Biblioteca padrão'});
+          });
+          if (Array.isArray(extraDocs)) extraDocs.forEach(([name,desc,code,category]) => docs.push({name,desc,code,kind:'example',category}));
+          const unique = new Map(); docs.forEach(item => { const key=item.name.toLowerCase(); if (!unique.has(key)) unique.set(key,item); });
+          return Array.from(unique.values()).sort((a,b) => a.name.localeCompare(b.name));
+        }
+        let pythonReferenceCache = null;
+        function getPythonReference() { if (!pythonReferenceCache) pythonReferenceCache = buildPythonReference(); return pythonReferenceCache; }
+        function escapeHtml(value) { return String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+        function searchPythonReference(inputId, resultsId) {
+          const query = (document.getElementById(inputId)?.value || '').trim().toLowerCase();
+          const container = document.getElementById(resultsId); if (!container) return;
+          if (!query) { container.innerHTML = '<p class="text-sm text-gray-500">Digite um termo para pesquisar na referência Python.</p>'; return; }
+          const words = query.split(/\s+/).filter(Boolean);
+          const results = getPythonReference().map(item => ({...item, score: words.reduce((score,word) => score + ((item.name.toLowerCase() === word) ? 8 : item.name.toLowerCase().includes(word) ? 4 : item.desc.toLowerCase().includes(word) ? 1 : item.category.toLowerCase().includes(word) ? 1 : 0), 0)})).filter(item => item.score > 0).sort((a,b) => b.score-a.score || a.name.localeCompare(b.name)).slice(0, 60);
+          if (!results.length) {
+            container.innerHTML = '<div class="doc-result-card"><p class="text-sm text-gray-200">Nenhum resultado local para <strong>' + escapeHtml(query) + '</strong>.</p><p class="text-xs text-gray-400 mt-2">Pesquise também na documentação oficial, que possui índice completo e atualizado.</p><a class="text-vscode-accent text-xs underline" target="_blank" rel="noopener" href="https://docs.python.org/3/search.html?q=' + encodeURIComponent(query) + '">Buscar na documentação oficial</a></div>';
+            return;
+          }
+          container.innerHTML = results.map((item,index) => '<article class="doc-result-card"><div class="flex flex-wrap justify-between gap-2 items-start"><div><h3 class="font-mono text-vscode-keyword font-semibold text-base">' + escapeHtml(item.name) + '</h3><span class="text-[10px] text-gray-400">' + escapeHtml(item.category) + '</span></div><a class="text-xs text-vscode-accent underline" href="' + escapeHtml(pythonDocsUrl(item)) + '" target="_blank" rel="noopener">Referência oficial ↗</a></div><p class="text-sm text-gray-300 mt-2">' + escapeHtml(item.desc) + '</p><pre class="bg-[#181818] text-green-300 rounded p-3 mt-3 text-xs overflow-auto whitespace-pre-wrap">' + escapeHtml(item.code || '# Consulte a documentação oficial para ver exemplos de ' + item.name) + '</pre><div class="flex flex-wrap gap-2 mt-3"><button class="voice-action text-white" onclick="insertReferenceCode(' + index + ', &quot;' + escapeHtml(resultsId) + '&quot;)"><i class="fas fa-code mr-1"></i> Inserir no editor</button><button class="voice-action text-white" onclick="speakReference(' + index + ', &quot;' + escapeHtml(resultsId) + '&quot;)"><i class="fas fa-volume-up mr-1"></i> Ler explicação</button></div></article>').join('');
+          container._currentResults = results;
+        }
+        function insertReferenceCode(index, resultsId) {
+          const item = document.getElementById(resultsId)?._currentResults?.[index]; if (!item) return;
+          setActiveTab('editor'); const current = getEditorValue(); setEditorValue(current + (current.trim() ? '\n\n' : '') + (item.code || '# Exemplo para ' + item.name));
+          if (monacoEditor) monacoEditor.focus();
+        }
+        function speakReference(index, resultsId) {
+          const item = document.getElementById(resultsId)?._currentResults?.[index]; if (!item) return;
+          if (!('speechSynthesis' in window)) { showNotification('A leitura em voz alta não é compatível com este navegador.'); return; }
+          window.speechSynthesis.cancel();
+          const text = item.name + '. ' + item.desc + '. Exemplo de código: ' + (item.code || 'consulte a documentação oficial');
+          const utterance = new SpeechSynthesisUtterance(text); utterance.lang = 'pt-BR'; utterance.rate = 0.92; window.speechSynthesis.speak(utterance);
+        }
+        function stopExplanationSpeech() { if ('speechSynthesis' in window) window.speechSynthesis.cancel(); }
+        function openOfficialPythonDocs() { window.open('https://docs.python.org/pt-br/3/', '_blank', 'noopener'); }
+
+        function addExtraDocs() {
+            const container = document.getElementById('docs-container');
+            extraDocs.forEach(([name, desc, code, category]) => {
+                const card = document.createElement('div'); card.className = 'doc-card bg-vscode-sidebar p-4 rounded-lg border border-vscode-border hover:border-vscode-blue transition';
+                const title = document.createElement('h3'); title.className = 'font-mono text-vscode-keyword text-base font-semibold mb-2'; title.textContent = name;
+                const tag = document.createElement('span'); tag.className = 'text-[10px] text-blue-300'; tag.textContent = category;
+                const p = document.createElement('p'); p.className = 'text-xs text-gray-300 mb-3'; p.textContent = desc;
+                const pre = document.createElement('pre'); pre.className = 'bg-vscode-terminal p-2 rounded text-xs text-green-300 font-mono mb-3 whitespace-pre-wrap'; pre.textContent = code;
+                const btn = document.createElement('button'); btn.className = 'text-xs text-vscode-accent hover:underline'; btn.textContent = 'Inserir no Editor'; btn.onclick = () => copyDocSnippet(code);
+                card.append(title, tag, p, pre, btn); container.appendChild(card);
+            });
+        }
+        // Initialize App on Page Load
+        window.onload = function() {
+            document.getElementById('current-filename').innerText = currentFile;
+            document.getElementById('code-editor').value = virtualFiles[currentFile] || '';
+            updateLineNumbers();
+            refreshFileExplorer();
+            addExtraDocs();
+            initMonacoEditor();
+            refreshBackendStatus();
+            loadQuizQuestion();
+            loadWriteChallenge();
+        };
+    </script>
+</body>
+</html>
