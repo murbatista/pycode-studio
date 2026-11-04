@@ -357,7 +357,7 @@ async def run_python(websocket: WebSocket) -> None:
         code = str(request.get("code", ""))
         filename = safe_filename(request.get("filename", "main.py"))
 
-        async with RUN_LOCK:
+        async 
 
             try:
                 script_path = write_project_files(
@@ -374,125 +374,150 @@ async def run_python(websocket: WebSocket) -> None:
                 })
                 return
 
-            process = await asyncio.create_subprocess_exec(
-                sys.executable,
-                "-u",
-                str(script_path),
-                cwd=str(workspace_dir),
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-                env={
-                    "PATH": os.getenv(
-                        "PATH",
-                        "/usr/local/bin:/usr/bin:/bin"
-                    ),
-                    "PYTHONIOENCODING": "utf-8",
-                    "PYTHONUNBUFFERED": "1",
-                    "HOME": str(workspace_dir),
-                    "TMPDIR": str(workspace_dir),
-                },
+            
+process = await asyncio.create_subprocess_exec(
+    sys.executable,
+    "-u",
+    str(script_path),
+    cwd=str(workspace_dir),
+    stdin=asyncio.subprocess.PIPE,
+    stdout=asyncio.subprocess.PIPE,
+    stderr=asyncio.subprocess.STDOUT,
+    env={
+        "PATH": os.getenv(
+            "PATH",
+            "/usr/local/bin:/usr/bin:/bin"
+        ),
+        "PYTHONIOENCODING": "utf-8",
+        "PYTHONUNBUFFERED": "1",
+        "HOME": str(workspace_dir),
+        "TMPDIR": str(workspace_dir),
+    },
+)
+
+await websocket.send_json({
+    "type": "started",
+    "python": sys.version.split()[0]
+})
+
+
+async def forward_output():
+    assert process is not None
+    assert process.stdout is not None
+
+    while True:
+        chunk = await process.stdout.read(4096)
+
+        if not chunk:
+            break
+
+        await websocket.send_json({
+            "type": "output",
+            "text": chunk.decode("utf-8", errors="replace")
+        })
+
+
+async def receive_input():
+    assert process is not None
+    assert process.stdin is not None
+
+    while True:
+        message = await websocket.receive_json()
+        kind = message.get("type")
+
+        if kind == "input":
+            text = str(message.get("text", ""))[:20_000]
+
+            # Cada mensagem representa uma linha enviada pelo usuário.
+            if not text.endswith(("\n", "\r")):
+                text += "\n"
+
+            process.stdin.write(
+                text.encode("utf-8", errors="replace")
             )
 
-            await websocket.send_json({
-                "type": "started",
-                "python": sys.version.split()[0]
-            })
+            await process.stdin.drain()
 
-            async def forward_output() -> None:
-                assert process is not None
-                assert process.stdout is not None
+        elif kind == "stop":
+            return
 
-                while True:
-                    chunk = await process.stdout.read(1024)
 
-                    if not chunk:
-                        break
+output_task = asyncio.create_task(forward_output())
+input_task = asyncio.create_task(receive_input())
+wait_task = asyncio.create_task(process.wait())
+timeout_task = asyncio.create_task(asyncio.sleep(120))
 
-                    await websocket.send_json({
-                        "type": "output",
-                        "text": chunk.decode(
-                            "utf-8",
-                            errors="replace"
-                        )
-                    })
+try:
+    done, pending = await asyncio.wait(
+        {input_task, wait_task, timeout_task},
+        return_when=asyncio.FIRST_COMPLETED
+    )
 
-                return_code = await process.wait()
+    # O tempo limite foi atingido.
+    if timeout_task in done and process.returncode is None:
+        process.terminate()
 
-                await websocket.send_json({
-                    "type": "exit",
-                    "code": return_code
-                })
+        try:
+            await asyncio.wait_for(wait_task, timeout=3)
+        except asyncio.TimeoutError:
+            process.kill()
+            await wait_task
 
-            async def receive_input() -> None:
-                assert process is not None
-                assert process.stdin is not None
+        await websocket.send_json({
+            "type": "error",
+            "text": "Execução interrompida após 120 segundos."
+        })
 
-                while True:
-                    message = await websocket.receive_json()
-                    kind = message.get("type")
+    # O usuário solicitou a interrupção ou a conexão foi encerrada.
+    elif input_task in done and process.returncode is None:
+        process.terminate()
 
-                    if kind == "input":
-                        text = str(message.get("text", ""))[:20_000]
+        try:
+            await asyncio.wait_for(wait_task, timeout=3)
+        except asyncio.TimeoutError:
+            process.kill()
+            await wait_task
 
-                        process.stdin.write(
-                            text.encode("utf-8", errors="replace")
-                        )
+    # Aguarda a saída final do programa.
+    await output_task
 
-                        await process.stdin.drain()
+    if input_task in done:
+        input_error = input_task.exception()
+        if input_error:
+            raise input_error
 
-                    elif kind == "stop":
-                        if process.returncode is None:
-                            process.terminate()
-                        return
+    await websocket.send_json({
+        "type": "exit",
+        "code": process.returncode
+    })
 
-            output_task = asyncio.create_task(forward_output())
-            input_task = asyncio.create_task(receive_input())
-            timeout_task = asyncio.create_task(asyncio.sleep(120))
+finally:
+    for task in (input_task, timeout_task):
+        if not task.done():
+            task.cancel()
 
-            done, pending = await asyncio.wait(
-                {output_task, input_task, timeout_task},
-                return_when=asyncio.FIRST_COMPLETED
-            )
+    await asyncio.gather(
+        input_task,
+        timeout_task,
+        return_exceptions=True
+    )
 
-            if timeout_task in done:
-                if process.returncode is None:
-                    process.terminate()
+    if process.returncode is None:
+        process.terminate()
 
-                    try:
-                        await asyncio.wait_for(
-                            process.wait(),
-                            timeout=3
-                        )
-                    except asyncio.TimeoutError:
-                        process.kill()
+        try:
+            await asyncio.wait_for(process.wait(), timeout=3)
+        except asyncio.TimeoutError:
+            process.kill()
+            await process.wait()
 
-                await websocket.send_json({
-                    "type": "error",
-                    "text": (
-                        "Execução interrompida após 120 segundos "
-                        "para evitar que um programa fique preso."
-                    )
-                })
+    if not output_task.done():
+        output_task.cancel()
 
-            elif input_task in done and output_task not in done:
-                if process.returncode is None:
-                    process.terminate()
-
-            for task in pending:
-                task.cancel()
-
-            await asyncio.gather(
-                *pending,
-                return_exceptions=True
-            )
-
-            for task in done:
-                if not task.cancelled() and task is not timeout_task:
-                    error = task.exception()
-
-                    if error:
-                        raise error
+    await asyncio.gather(
+        output_task,
+        return_exceptions=True
+    )
 
     except WebSocketDisconnect:
         if process and process.returncode is None:
