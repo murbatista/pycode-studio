@@ -449,7 +449,7 @@ print("Pronto para codificar!")</textarea>
                             </div>
                             <div id="terminal-output" class="flex-1 p-3 overflow-y-auto text-green-400 whitespace-pre-wrap">Terminal Python pronto. No aplicativo local, os programas são executados com o Python instalado no computador.</div>
                             <form class="flex gap-2 border-t border-vscode-border p-2" onsubmit="event.preventDefault();sendTerminalInput('terminal-output','terminal-input')">
-                                <span class="text-green-400 self-center">&gt;</span><input id="terminal-input" autocomplete="off" class="flex-1 bg-transparent outline-none text-white" placeholder="Digite uma entrada para input() e pressione Enter..." aria-label="Entrada para o terminal Python"><button class="bg-vscode-activity px-3 py-1 rounded text-white" type="submit">Enviar</button>
+                                <span class="text-green-400 self-center">&gt;</span><input id="terminal-input" autocomplete="off" disabled class="flex-1 bg-transparent outline-none text-white disabled:opacity-40" placeholder="Aguardando o Python solicitar input()..." aria-label="Entrada para o terminal Python"><button class="bg-vscode-activity px-3 py-1 rounded text-white disabled:opacity-40" type="submit" disabled>Enviar</button>
                             </form>
                         </div>
                     </div>
@@ -740,7 +740,7 @@ print(x // y)</pre>
                         <div class="bg-vscode-sidebar p-4 rounded-xl border border-vscode-border flex flex-col min-h-[440px]">
                             <div class="flex justify-between items-center border-b border-vscode-border pb-2"><h3 class="text-xs uppercase font-bold text-gray-300"><i class="fas fa-terminal mr-1"></i> Terminal da Voz</h3><div class="flex gap-3"><button onclick="stopTerminalProcess('voice-terminal-output')" class="text-xs text-red-300 hover:text-red-200"><i class="fas fa-stop mr-1"></i> Parar</button><button onclick="clearVoiceTerminal()" class="text-xs text-gray-400 hover:text-white"><i class="fas fa-eraser mr-1"></i> Limpar</button></div></div>
                             <pre id="voice-terminal-output" class="flex-1 min-h-[250px] overflow-auto whitespace-pre-wrap bg-[#181818] p-3 mt-3 rounded text-xs font-mono text-green-300">Terminal da voz pronto. O resultado da execução aparecerá aqui.</pre>
-                            <form class="flex gap-2 mt-2" onsubmit="event.preventDefault();sendTerminalInput('voice-terminal-output','voice-terminal-input')"><span class="text-green-400 self-center">&gt;</span><input id="voice-terminal-input" autocomplete="off" class="flex-1 bg-[#181818] border border-vscode-border rounded px-2 py-1 text-white text-xs outline-none" placeholder="Responder ao input() e pressionar Enter"><button type="submit" class="bg-vscode-activity px-3 py-1 rounded text-white text-xs">Enviar</button></form>
+                            <form class="flex gap-2 mt-2" onsubmit="event.preventDefault();sendTerminalInput('voice-terminal-output','voice-terminal-input')"><span class="text-green-400 self-center">&gt;</span><input id="voice-terminal-input" autocomplete="off" disabled class="flex-1 bg-[#181818] border border-vscode-border rounded px-2 py-1 text-white text-xs outline-none disabled:opacity-40" placeholder="Aguardando input()..."><button type="submit" disabled class="bg-vscode-activity px-3 py-1 rounded text-white text-xs disabled:opacity-40">Enviar</button></form>
                             <p class="text-[11px] text-gray-500 mt-2">No aplicativo local, este terminal aceita respostas a input(). O reconhecimento de voz depende do navegador e da permissão do microfone. Revise o código antes de executar.</p>
                         </div>
                     </div>
@@ -956,6 +956,8 @@ persistVirtualFiles();
         let pyodideInstance = null;
         let pyodideLoadPromise = null;
         const activeTerminalSockets = {};
+        // Só libera a digitação quando o backend enviar input_requested.
+        const terminalInputWaiting = {};
         let lastPythonError = '';
         let localBackendAvailable = false;
         async function refreshBackendStatus() {
@@ -1008,40 +1010,132 @@ persistVirtualFiles();
             output.append(document.createTextNode(String(text)));
             output.scrollTop = output.scrollHeight;
         }
+        function setTerminalInputEnabled(outputId, inputId, enabled) {
+            terminalInputWaiting[outputId] = Boolean(enabled);
+            const input = document.getElementById(inputId);
+            if (!input) return;
+
+            const form = input.closest('form');
+            const sendButton = form ? form.querySelector('button[type="submit"]') : null;
+            input.disabled = !enabled;
+            if (sendButton) sendButton.disabled = !enabled;
+
+            if (enabled) {
+                input.placeholder = 'O Python está aguardando sua resposta. Digite e pressione Enter...';
+                input.focus();
+            } else {
+                input.placeholder = outputId === 'voice-terminal-output'
+                    ? 'Aguardando input()...'
+                    : 'Aguardando o Python solicitar input()...';
+            }
+        }
+
         async function runPythonInLocalBackend(code, outputId, inputId, filename) {
             const output = document.getElementById(outputId);
             if (!output) return;
-            if (activeTerminalSockets[outputId]) { try { activeTerminalSockets[outputId].close(); } catch (_) {} }
+
+            // Bloqueia a entrada no início de cada execução.
+            setTerminalInputEnabled(outputId, inputId, false);
+
+            if (activeTerminalSockets[outputId]) {
+                try { activeTerminalSockets[outputId].close(); } catch (_) {}
+            }
+
             const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
             const socket = new WebSocket(protocol + '//' + location.host + '/ws/run');
             activeTerminalSockets[outputId] = socket;
             output.innerText = '>>> Iniciando Python local…\n';
-            socket.onopen = () => socket.send(JSON.stringify({ type: 'run', code, filename: filename || 'main.py', files: virtualFiles }));
-            socket.onmessage = event => {
-                let message; try { message = JSON.parse(event.data); } catch (_) { appendTerminalText(output, event.data); return; }
-                if (message.type === 'output') appendTerminalText(output, message.text);
-                else if (message.type === 'error') { lastPythonError = message.text || 'Erro no backend'; appendTerminalText(output, '\n[Erro] ' + lastPythonError + '\n'); }
-                else if (message.type === 'exit') { appendTerminalText(output, '\n[Processo finalizado — código ' + message.code + ']\n'); if (message.code === 0) lastPythonError = ''; }
-                else if (message.type === 'started') appendTerminalText(output, '[Python local iniciado]\n');
-            };
-            socket.onerror = () => { appendTerminalText(output, '\nNão foi possível conectar ao backend. Abra o programa pelo iniciar.bat.\n'); };
-            socket.onclose = () => { if (activeTerminalSockets[outputId] === socket) delete activeTerminalSockets[outputId]; };
+
             const input = document.getElementById(inputId);
             if (input) input.dataset.terminalId = outputId;
+
+            socket.onopen = () => {
+                socket.send(JSON.stringify({
+                    type: 'run',
+                    code,
+                    filename: filename || 'main.py',
+                    files: virtualFiles
+                }));
+            };
+
+            socket.onmessage = event => {
+                let message;
+                try {
+                    message = JSON.parse(event.data);
+                } catch (_) {
+                    appendTerminalText(output, event.data);
+                    return;
+                }
+
+                if (message.type === 'output') {
+                    appendTerminalText(output, message.text || '');
+                } else if (message.type === 'input_requested') {
+                    // O app.py envia este evento somente quando input() está aguardando.
+                    setTerminalInputEnabled(outputId, inputId, true);
+                } else if (message.type === 'error') {
+                    setTerminalInputEnabled(outputId, inputId, false);
+                    lastPythonError = message.text || 'Erro no backend';
+                    appendTerminalText(output, '\n[Erro] ' + lastPythonError + '\n');
+                } else if (message.type === 'exit') {
+                    setTerminalInputEnabled(outputId, inputId, false);
+                    appendTerminalText(output, '\n[Processo finalizado — código ' + message.code + ']\n');
+                    if (message.code === 0) lastPythonError = '';
+                } else if (message.type === 'started') {
+                    appendTerminalText(output, '[Python local iniciado]\n');
+                }
+            };
+
+            socket.onerror = () => {
+                setTerminalInputEnabled(outputId, inputId, false);
+                appendTerminalText(output, '\nNão foi possível conectar ao backend. Verifique a conexão e tente novamente.\n');
+            };
+
+            socket.onclose = () => {
+                setTerminalInputEnabled(outputId, inputId, false);
+                if (activeTerminalSockets[outputId] === socket) {
+                    delete activeTerminalSockets[outputId];
+                }
+            };
         }
+
         function stopTerminalProcess(outputId) {
             const socket = activeTerminalSockets[outputId];
-            if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'stop'}));
-            else showNotification('Não há execução ativa neste terminal.');
-        }
-        function sendTerminalInput(outputId, inputId) {
-            const input = document.getElementById(inputId); if (!input) return;
-            const text = input.value; input.value = '';
-            const socket = activeTerminalSockets[outputId];
+            const inputId = outputId === 'voice-terminal-output' ? 'voice-terminal-input' : 'terminal-input';
+
+            setTerminalInputEnabled(outputId, inputId, false);
+
             if (socket && socket.readyState === WebSocket.OPEN) {
-                appendTerminalText(document.getElementById(outputId), text + '\n');
-                socket.send(JSON.stringify({ type: 'input', text: text + '\n' }));
-            } else showNotification('Execute um programa que esteja aguardando input() para enviar uma entrada.');
+                socket.send(JSON.stringify({ type: 'stop' }));
+            } else {
+                showNotification('Não há execução ativa neste terminal.');
+            }
+        }
+
+        function sendTerminalInput(outputId, inputId) {
+            const input = document.getElementById(inputId);
+            if (!input) return;
+
+            const socket = activeTerminalSockets[outputId];
+
+            // Impede envio antes de input() ou depois de a resposta já ter sido enviada.
+            if (!terminalInputWaiting[outputId]) {
+                showNotification('Aguarde o Python solicitar uma entrada com input().');
+                return;
+            }
+
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                setTerminalInputEnabled(outputId, inputId, false);
+                showNotification('A conexão com o terminal foi encerrada. Execute o código novamente.');
+                return;
+            }
+
+            const value = input.value;
+            input.value = '';
+
+            // Bloqueia imediatamente para evitar envios duplicados.
+            setTerminalInputEnabled(outputId, inputId, false);
+            appendTerminalText(document.getElementById(outputId), value + '\n');
+            socket.send(JSON.stringify({ type: 'input', text: value + '\n' }));
         }
       async function runPythonCode() {
     if (!editorHasOpenFile) {
