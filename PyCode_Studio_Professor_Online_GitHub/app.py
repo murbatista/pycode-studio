@@ -405,7 +405,7 @@ builtins.input = pycode_input
 runpy.run_path(script_path, run_name="__main__")
 '''
 
-process = await asyncio.create_subprocess_exec(
+    process = await asyncio.create_subprocess_exec(
     sys.executable,
     "-u",
     "-c",
