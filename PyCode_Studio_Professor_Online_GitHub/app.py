@@ -355,6 +355,7 @@ async def run_python(websocket: WebSocket) -> None:
             })
             return
 
+        
         code = str(request.get("code", ""))
         filename = safe_filename(request.get("filename", "main.py"))
 
@@ -405,12 +406,12 @@ builtins.input = pycode_input
 runpy.run_path(script_path, run_name="__main__")
 '''
 
-    process = await asyncio.create_subprocess_exec(
-    sys.executable,
-    "-u",
-    "-c",
-    runner_code,
-    str(script_path),
+            process = await asyncio.create_subprocess_exec(
+                sys.executable,
+                "-u",
+                "-c",
+                runner_code,
+                str(script_path),
                 cwd=str(workspace_dir),
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
@@ -432,8 +433,7 @@ runpy.run_path(script_path, run_name="__main__")
                 "python": sys.version.split()[0]
             })
 
-            async def forward_output():
-                            input_marker = b"\x1ePYCODE_STUDIO_INPUT\x1e"
+            input_marker = b"\x1ePYCODE_STUDIO_INPUT\x1e"
 
             async def forward_output():
                 assert process.stdout is not None
@@ -497,7 +497,7 @@ runpy.run_path(script_path, run_name="__main__")
                         del pending[:visible_length]
 
                 await send_visible(bytes(pending))
-                
+
             async def receive_input():
                 assert process.stdin is not None
 
@@ -612,11 +612,6 @@ runpy.run_path(script_path, run_name="__main__")
                 *tasks,
                 return_exceptions=True
             )
-
-        try:
-            await websocket.close()
-        except Exception:
-            pass
 
 
 
