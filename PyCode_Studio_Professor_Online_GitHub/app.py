@@ -419,9 +419,10 @@ async def run_python(websocket: WebSocket) -> None:
                     "text": str(exc)
                 })
                 return
+                
 
-            
-runner_code = r'''
+        
+        runner_code = r'''
 import builtins
 import os
 import runpy
