@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import re
+import secrets
 import os
 import subprocess
 import sys
@@ -17,8 +19,8 @@ from pydantic import BaseModel, Field
 
 BASE_DIR = Path(__file__).resolve().parent
 INDEX_FILE = BASE_DIR / "index.html"
-WORKSPACE_DIR = BASE_DIR / "workspace" / "project"
-WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
+WORKSPACE_ROOT = BASE_DIR / "workspace" / "users"
+WORKSPACE_ROOT.mkdir(parents=True, exist_ok=True)
 load_dotenv(BASE_DIR / ".env")
 
 app = FastAPI(title="PyCode Studio", version="2.1.0")
