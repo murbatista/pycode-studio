@@ -55,16 +55,38 @@ class TutorRequest(BaseModel):
     error: str = Field(default="", max_length=8_000)
 
 
+
 def safe_filename(name: str) -> str:
-    """Return a single safe filename; never accept a path from the client."""
-    cleaned = str(name or "main.py").replace("\\", "/").split("/")[-1].strip()
-    cleaned = "".join(ch for ch in cleaned if ch.isalnum() or ch in "._- ")
-    if not cleaned or cleaned in {".", ".."}:
-        return "main.py"
-    if len(cleaned) > 120:
-        stem, dot, suffix = cleaned.rpartition(".")
-        cleaned = (stem[:100] + dot + suffix[:12]) if dot else cleaned[:120]
-    return cleaned
+    """Valida um caminho relativo dentro do projeto."""
+    cleaned = str(name or "main.py").replace("\\", "/").strip()
+
+    parts = cleaned.split("/")
+
+    if not parts or len(parts) > 10:
+        raise ValueError("Caminho de arquivo inválido.")
+
+    safe_parts = []
+
+    for part in parts:
+        part = part.strip()
+
+        if not part or part in {".", ".."}:
+            raise ValueError("Caminho de arquivo inválido.")
+
+        part = "".join(
+            ch for ch in part
+            if ch.isalnum() or ch in "._- "
+        )
+
+        if not part or part in {".", ".."}:
+            raise ValueError("Nome de arquivo inválido.")
+
+        if len(part) > 120:
+            raise ValueError("Nome de arquivo muito longo.")
+
+        safe_parts.append(part)
+
+    return "/".join(safe_parts)
 
 def get_session_workspace(session: dict[str, Any]) -> Path:
     workspace_id = session.get("workspace_id")
@@ -141,34 +163,57 @@ def write_project_files(
     if not isinstance(files, dict):
         files = {}
 
+    workspace = workspace_dir.resolve()
     total = 0
+
+    def get_safe_path(raw_name: str) -> Path:
+        name = safe_filename(raw_name)
+        destination = (workspace / name).resolve()
+
+        if not destination.is_relative_to(workspace):
+            raise ValueError("Caminho fora da pasta do projeto.")
+
+        current = workspace
+
+        for part in name.split("/"):
+            current = current / part
+
+            if current.is_symlink():
+                raise ValueError("Links simbólicos não são permitidos.")
+
+        return destination
 
     for raw_name, raw_content in files.items():
         if not isinstance(raw_content, str):
             continue
 
-        name = safe_filename(str(raw_name))
+        destination = get_safe_path(str(raw_name))
         content = raw_content.encode("utf-8")
 
         if len(content) > MAX_FILE_BYTES:
-            raise ValueError(f"O arquivo {name} excede o limite de 2 MB.")
+            raise ValueError(
+                f"O arquivo {raw_name} excede o limite de 2 MB."
+            )
 
         total += len(content)
 
         if total > MAX_PROJECT_BYTES:
             raise ValueError("O projeto excede o limite de 10 MB.")
 
-        (workspace_dir / name).write_bytes(content)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(content)
 
-    main_name = safe_filename(current_filename)
+    main_path = get_safe_path(current_filename)
     code_bytes = current_code.encode("utf-8")
 
     if len(code_bytes) > MAX_FILE_BYTES:
         raise ValueError("O código atual excede o limite de 2 MB.")
 
-    (workspace_dir / main_name).write_bytes(code_bytes)
+    main_path.parent.mkdir(parents=True, exist_ok=True)
+    main_path.write_bytes(code_bytes)
 
-    return workspace_dir / main_name
+    return main_path
+
 
 @app.get("/")
 def home() -> FileResponse:
@@ -375,16 +420,20 @@ async def run_python(websocket: WebSocket) -> None:
                 })
                 return
 
-            runner_code = r'''
+            
+runner_code = r'''
 import builtins
 import os
 import runpy
 import sys
 
 script_path = os.path.abspath(sys.argv[1])
+workspace_dir = os.getcwd()
 
 sys.argv = [script_path]
-sys.path.insert(0, os.path.dirname(script_path))
+
+# Permite localizar módulos em qualquer subpasta do projeto.
+sys.path.insert(0, workspace_dir)
 
 def pycode_input(prompt=""):
     if prompt:
