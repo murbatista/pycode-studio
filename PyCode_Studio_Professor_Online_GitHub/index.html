@@ -408,21 +408,35 @@ html[data-theme="light"] .tab-content [class~="text-gray-300"] {
 
                     </aside>
 
-                    <!-- Code Editor & Terminal Split -->
-                    <div class="flex-1 flex flex-col h-full overflow-hidden">
-                        <!-- File Tabs -->
-                        <div class="h-9 bg-vscode-sidebar flex items-center border-b border-vscode-border overflow-x-auto text-xs">
-                            <div id="tab-file-title" class="bg-vscode-editor text-white px-4 py-2 border-t-2 border-vscode-blue flex items-center gap-2 min-w-[130px]">
-                                <i class="fab fa-python text-yellow-400"></i> <span id="current-filename">main.py</span>
-                            </div>
-                            <div class="ml-auto px-3 flex items-center space-x-2">
-                                <button onclick="checkPythonSyntax()" title="Verificar sintaxe" class="text-gray-400 hover:text-white"><i class="fas fa-spell-check"></i> <span class="hidden lg:inline">Sintaxe</span></button>
-                                <button onclick="runAutomatedChecks()" title="Executar testes automatizados do aplicativo" class="text-gray-400 hover:text-white"><i class="fas fa-vial"></i> <span class="hidden lg:inline">Testes</span></button>
-                                <button onclick="clearEditor()" title="Limpar Editor" class="text-gray-400 hover:text-white"><i class="fas fa-trash"></i></button>
-                                <button onclick="copyEditorCode()" title="Copiar Código" class="text-gray-400 hover:text-white"><i class="fas fa-copy"></i></button>
-                            </div>
-                        </div>
+                   <!-- Code Editor & Terminal Split -->
+<div class="flex-1 flex flex-col h-full overflow-hidden">
+    <!-- File Tabs -->
+    <div class="h-9 bg-vscode-sidebar flex items-center border-b border-vscode-border overflow-x-auto text-xs">
 
+        <div id="file-tabs-container" class="flex items-center h-full min-w-0">
+        </div>
+
+        <div class="ml-auto px-3 flex items-center space-x-2 shrink-0">
+            <button onclick="checkPythonSyntax()" title="Verificar sintaxe" class="text-gray-400 hover:text-white">
+                <i class="fas fa-spell-check"></i>
+                <span class="hidden lg:inline">Sintaxe</span>
+            </button>
+
+            <button onclick="runAutomatedChecks()" title="Executar testes automatizados do aplicativo" class="text-gray-400 hover:text-white">
+                <i class="fas fa-vial"></i>
+                <span class="hidden lg:inline">Testes</span>
+            </button>
+
+            <button onclick="clearEditor()" title="Limpar Editor" class="text-gray-400 hover:text-white">
+                <i class="fas fa-trash"></i>
+            </button>
+
+            <button onclick="copyEditorCode()" title="Copiar Código" class="text-gray-400 hover:text-white">
+                <i class="fas fa-copy"></i>
+            </button>
+        </div>
+
+    </div>
                         <!-- Monaco (editor usado pelo VS Code) com fallback em textarea -->
                         <div class="flex-1 flex relative font-mono text-sm overflow-hidden bg-vscode-editor min-h-0">
                             <div id="line-numbers" class="w-12 bg-vscode-editor text-vscode-line text-right pr-3 py-3 select-none border-r border-vscode-border/30 text-xs">1</div>
@@ -845,7 +859,7 @@ persistVirtualFiles();
             if (monacoEditor && monacoEditor.getValue() !== text) monacoEditor.setValue(text);
             updateLineNumbers();
         }
-       function switchFile(filename) {
+      function switchFile(filename) {
     if (!Object.prototype.hasOwnProperty.call(virtualFiles, filename)) return;
 
     if (editorHasOpenFile) {
@@ -854,14 +868,116 @@ persistVirtualFiles();
 
     currentFile = filename;
     editorHasOpenFile = true;
+    openFiles.add(filename);
 
     document.getElementById('current-filename').innerText = filename;
-    setEditorValue(virtualFiles[filename] || '');
+
+    if (monacoEditor) {
+        let model = monacoModels.get(filename);
+
+        if (!model) {
+            model = monaco.editor.createModel(
+                virtualFiles[filename] || '',
+                'python'
+            );
+            monacoModels.set(filename, model);
+        }
+
+        monacoEditor.setModel(model);
+        document.getElementById('code-editor').value = model.getValue();
+    } else {
+        setEditorValue(virtualFiles[filename] || '');
+    }
 
     refreshFileExplorer();
     persistVirtualFiles();
-}
 
+    if (typeof renderFileTabs === 'function') {
+        renderFileTabs();
+    }
+
+    if (monacoEditor) {
+        monacoEditor.focus();
+    }
+}
+        function renderFileTabs() {
+    const container = document.getElementById('file-tabs-container');
+
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    openFiles.forEach(filename => {
+        if (!Object.prototype.hasOwnProperty.call(virtualFiles, filename)) {
+            openFiles.delete(filename);
+            return;
+        }
+
+        const active = filename === currentFile;
+
+        const tab = document.createElement('div');
+
+        tab.className = `
+            flex items-center gap-2 px-3 h-full cursor-pointer
+            border-r border-vscode-border min-w-[120px]
+            ${active
+                ? 'bg-vscode-editor text-white border-t-2 border-vscode-blue'
+                : 'bg-vscode-sidebar text-gray-400 hover:text-white'}
+        `;
+
+        const title = document.createElement('span');
+        title.textContent = filename;
+        title.className = 'truncate flex-1';
+
+        const close = document.createElement('button');
+        close.innerHTML = '&times;';
+        close.className = 'text-gray-400 hover:text-white px-1';
+        close.title = 'Fechar aba';
+
+        close.onclick = function(event) {
+            event.stopPropagation();
+            closeFileTab(filename);
+        };
+
+        tab.appendChild(title);
+        tab.appendChild(close);
+
+        tab.onclick = function() {
+            switchFile(filename);
+        };
+
+        container.appendChild(tab);
+    });
+}
+        function closeFileTab(filename) {
+    if (!openFiles.has(filename)) return;
+
+    // Salva o conteúdo atual antes de fechar.
+    if (currentFile === filename && editorHasOpenFile) {
+        virtualFiles[filename] = getEditorValue();
+    }
+
+    openFiles.delete(filename);
+
+    // Se for a aba ativa, seleciona outra.
+    if (currentFile === filename) {
+        const nextFile = openFiles.values().next().value;
+
+        if (nextFile) {
+            switchFile(nextFile);
+        } else if (Object.prototype.hasOwnProperty.call(virtualFiles, 'main.py')) {
+            switchFile('main.py');
+        } else {
+            currentFile = '';
+            editorHasOpenFile = false;
+            document.getElementById('current-filename').innerText = 'Nenhum arquivo aberto';
+            setEditorValue('');
+        }
+    }
+
+    renderFileTabs();
+    persistVirtualFiles();
+}
         // Sincronização do editor. Monaco cuida de numeração, indentação e edição quando carregado.
         let monacoEditor = null;
         function updateLineNumbers() {
@@ -901,33 +1017,42 @@ persistVirtualFiles();
             require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
             require(['vs/editor/editor.main'], function() {
                 const host = document.getElementById('monaco-editor');
-                const fallback = document.getElementById('code-editor');
-                monacoEditor = monaco.editor.create(host, {
-                    value: '',
-                    language: 'python',
-                    theme: document.documentElement.getAttribute('data-theme') === 'light' ? 'vs' : 'vs-dark',
-                    automaticLayout: true,
-                    fontFamily: "'Fira Code', Consolas, monospace",
-                    fontSize: 13,
-                    lineNumbers: 'on',
-                    minimap: { enabled: false },
-                    tabSize: 4,
-                    insertSpaces: true,
-                    wordWrap: 'off',
-                    scrollBeyondLastLine: false,
-                    renderWhitespace: 'selection',
-                    suggestOnTriggerCharacters: true,
-                    quickSuggestions: true,
-                    padding: { top: 10, bottom: 10 }
-                });
-                host.classList.remove('hidden');
-                fallback.classList.add('hidden');
-                document.getElementById('line-numbers').classList.add('hidden');
-               monacoEditor.onDidChangeModelContent(() => {
-    fallback.value = monacoEditor.getValue();
+                const fallback = document.getElementById('code-editor');monacoEditor = monaco.editor.create(host, {
+    model: monaco.editor.createModel(
+        virtualFiles[currentFile] || '',
+        'python'
+    ),
+    language: 'python',
+    theme: document.documentElement.getAttribute('data-theme') === 'light' ? 'vs' : 'vs-dark',
+    automaticLayout: true,
+    fontFamily: "'Fira Code', Consolas, monospace",
+    fontSize: 13,
+    lineNumbers: 'on',
+    minimap: { enabled: false },
+    tabSize: 4,
+    insertSpaces: true,
+    wordWrap: 'off',
+    scrollBeyondLastLine: false,
+    renderWhitespace: 'selection',
+    suggestOnTriggerCharacters: true,
+    quickSuggestions: true,
+    padding: { top: 10, bottom: 10 }
+});
 
-    if (editorHasOpenFile) {
-        virtualFiles[currentFile] = fallback.value;
+monacoModels.set(currentFile, monacoEditor.getModel());
+renderFileTabs();
+
+host.classList.remove('hidden');
+fallback.classList.add('hidden');
+document.getElementById('line-numbers').classList.add('hidden');
+               monacoEditor.onDidChangeModelContent(() => {
+    const fallback = document.getElementById('code-editor');
+    const value = monacoEditor.getValue();
+
+    fallback.value = value;
+
+    if (editorHasOpenFile && currentFile) {
+        virtualFiles[currentFile] = value;
         persistVirtualFiles();
     }
 
@@ -937,6 +1062,7 @@ persistVirtualFiles();
                 monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => runPythonCode());
                 monacoEditor.focus();
                 updateStatusFromEditor();
+                renderFileTabs();
             }, function() { showNotification('Editor avançado indisponível; usando o editor simples.'); });
         }
         function updateStatusFromEditor() {
@@ -1845,36 +1971,188 @@ persistVirtualFiles();
         }
 
         function toggleFileMenu() { document.getElementById('file-menu').classList.toggle('hidden'); }
-        function refreshFileExplorer() {
-            const aside = document.querySelector('#tab-editor aside');
-            const list = aside && Array.from(aside.children).find(el => el.classList.contains('flex-col') && el.classList.contains('space-y-0.5'));
-            if (!list) return;
-            list.innerHTML = '';
-            Object.keys(virtualFiles).forEach(name => {
-                const item = document.createElement('button');
-                item.type = 'button'; item.className = 'file-item w-full text-left px-6 py-1.5 text-gray-400 hover:bg-vscode-activity flex items-center gap-2 cursor-pointer';
-                item.id = 'file-' + name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g,'-');
-                const ico = document.createElement('i'); ico.className = name.endsWith('.py') ? 'fab fa-python text-yellow-400' : 'far fa-file text-blue-300';
-                item.append(ico, document.createTextNode(' ' + name)); item.onclick = () => switchFile(name); list.appendChild(item);
-            });
-            const active = document.getElementById('file-' + currentFile.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g,'-'));
+        
+function refreshFileExplorer() {
+    const aside = document.querySelector('#tab-editor aside');
 
-if (editorHasOpenFile && active) {
-    active.classList.add('bg-vscode-bg','text-white','border-l-2','border-vscode-blue');
+    const list = aside && Array.from(aside.children).find(el =>
+        el.classList.contains('flex-col') &&
+        el.classList.contains('space-y-0.5')
+    );
+
+    if (!list) return;
+
+    list.innerHTML = '';
+
+    const root = {
+        folders: new Map(),
+        files: []
+    };
+
+    // Organiza os arquivos em uma estrutura de pastas.
+    Object.keys(virtualFiles).forEach(name => {
+        const parts = name.split('/');
+        let current = root;
+
+        parts.forEach((part, index) => {
+            if (index === parts.length - 1) {
+                current.files.push({
+                    name: part,
+                    path: name
+                });
+            } else {
+                if (!current.folders.has(part)) {
+                    current.folders.set(part, {
+                        folders: new Map(),
+                        files: []
+                    });
+                }
+
+                current = current.folders.get(part);
+            }
+        });
+    });
+
+    function renderFolder(container, folder, depth = 0) {
+        // Exibe as pastas primeiro.
+        const folders = Array.from(folder.folders.entries())
+            .sort((a, b) => a[0].localeCompare(b[0]));
+
+        folders.forEach(([folderName, content]) => {
+            const folderButton = document.createElement('button');
+
+            folderButton.type = 'button';
+            folderButton.className =
+                'w-full text-left py-1.5 text-gray-400 hover:bg-vscode-activity flex items-center gap-2 cursor-pointer';
+
+            folderButton.style.paddingLeft = `${24 + depth * 16}px`;
+
+            const icon = document.createElement('i');
+            icon.className = 'fas fa-folder-open text-yellow-400';
+
+            const arrow = document.createElement('i');
+            arrow.className = 'fas fa-chevron-down text-xs';
+
+            const label = document.createElement('span');
+            label.textContent = folderName;
+
+            folderButton.append(arrow, icon, label);
+            container.appendChild(folderButton);
+
+            const children = document.createElement('div');
+
+            folderButton.onclick = () => {
+                const closed = children.classList.toggle('hidden');
+
+                arrow.className = closed
+                    ? 'fas fa-chevron-right text-xs'
+                    : 'fas fa-chevron-down text-xs';
+
+                icon.className = closed
+                    ? 'fas fa-folder text-yellow-400'
+                    : 'fas fa-folder-open text-yellow-400';
+            };
+
+            container.appendChild(children);
+
+            renderFolder(children, content, depth + 1);
+        });
+
+        // Exibe os arquivos da pasta.
+        const files = folder.files.sort((a, b) =>
+            a.name.localeCompare(b.name)
+        );
+
+        files.forEach(file => {
+            const item = document.createElement('button');
+
+            item.type = 'button';
+            item.className =
+                'file-item w-full text-left py-1.5 text-gray-400 hover:bg-vscode-activity flex items-center gap-2 cursor-pointer';
+
+            item.style.paddingLeft = `${40 + depth * 16}px`;
+
+            const icon = document.createElement('i');
+
+            icon.className = file.name.endsWith('.py')
+                ? 'fab fa-python text-yellow-400'
+                : 'far fa-file text-blue-300';
+
+            const label = document.createElement('span');
+            label.textContent = file.name;
+
+            item.append(icon, label);
+
+            item.onclick = () => switchFile(file.path);
+
+            if (editorHasOpenFile && file.path === currentFile) {
+                item.classList.add(
+                    'bg-vscode-bg',
+                    'text-white',
+                    'border-l-2',
+                    'border-vscode-blue'
+                );
+            }
+
+            container.appendChild(item);
+        });
+    }
+
+    renderFolder(list, root);
 }
-        }
-        function newUserFile() {
-            let name = prompt('Nome do novo arquivo (ex.: main.py):', 'novo_arquivo.py'); if (!name) return;
-            name = name.trim().replace(/[\\/:*?"<>|]/g, '_'); if (!name) return;
-            if (!/\.[a-zA-Z0-9]{1,8}$/.test(name)) name += '.py';
-            if (Object.prototype.hasOwnProperty.call(virtualFiles, name)) { showNotification('Já existe um arquivo com esse nome.'); return; }
-            if (editorHasOpenFile) {
-    virtualFiles[currentFile] = getEditorValue();
+
+        
+function newUserFile() {
+    let name = prompt(
+        'Nome do arquivo (ex.: main.py ou funcoes/calculos.py):',
+        'novo_arquivo.py'
+    );
+
+    if (!name) return;
+
+    name = name.trim().replace(/\\/g, '/');
+
+    const parts = name.split('/');
+
+    if (
+        parts.length > 10 ||
+        parts.some(part =>
+            !part.trim() ||
+            part.trim() === '.' ||
+            part.trim() === '..' ||
+            /[*?"<>|:]/.test(part)
+        )
+    ) {
+        showNotification('Nome ou caminho de arquivo inválido.');
+        return;
+    }
+
+    name = parts.map(part => part.trim()).join('/');
+
+    const filename = parts[parts.length - 1];
+
+    if (!/\.[a-zA-Z0-9]{1,8}$/.test(filename)) {
+        name += '.py';
+    }
+
+    if (Object.prototype.hasOwnProperty.call(virtualFiles, name)) {
+        showNotification('Já existe um arquivo com esse caminho.');
+        return;
+    }
+
+    if (editorHasOpenFile) {
+        virtualFiles[currentFile] = getEditorValue();
+    }
+
+    virtualFiles[name] = '';
+
+    refreshFileExplorer();
+    switchFile(name);
+
+    document.getElementById('file-menu').classList.add('hidden');
 }
-virtualFiles[name] = '';
-            refreshFileExplorer(); switchFile(name); document.getElementById('file-menu').classList.add('hidden');
-        }
-       function removeCurrentFile() {
+
+function removeCurrentFile() {
     if (!editorHasOpenFile) {
         showNotification('Abra um arquivo antes de removê-lo.');
         return;
@@ -1887,189 +2165,46 @@ virtualFiles[name] = '';
 
     if (!confirm('Remover ' + currentFile + ' do projeto atual?')) return;
 
-    delete virtualFiles[currentFile];
+    const removedFile = currentFile;
 
-    currentFile = Object.keys(virtualFiles)[0];
-    editorHasOpenFile = false;
+    // Salva o conteúdo antes de excluir.
+    virtualFiles[removedFile] = getEditorValue();
 
-    document.getElementById('current-filename').innerText = 'Nenhum arquivo aberto';
-    setEditorValue('');
+    // Escolhe outro arquivo para abrir.
+    const nextFile = [...openFiles].find(name =>
+        name !== removedFile &&
+        Object.prototype.hasOwnProperty.call(virtualFiles, name)
+    ) || Object.keys(virtualFiles).find(name => name !== removedFile);
+
+    // Abre o próximo arquivo antes de remover o modelo antigo.
+    switchFile(nextFile);
+
+    openFiles.delete(removedFile);
+    delete virtualFiles[removedFile];
+
+    const model = monacoModels.get(removedFile);
+
+    if (model) {
+        model.dispose();
+        monacoModels.delete(removedFile);
+    }
 
     refreshFileExplorer();
+    renderFileTabs();
     persistVirtualFiles();
+
     showNotification('Arquivo removido do projeto.');
 }
-       async function saveCurrentFile() {
-    if (!editorHasOpenFile) {
-        showNotification('Abra um arquivo antes de salvar.');
-        return;
-    }
-
-    virtualFiles[currentFile] = getEditorValue();
-    persistVirtualFiles();
-    const content = virtualFiles[currentFile];
-            try {
-                if (window.showSaveFilePicker) {
-                    const handle = await window.showSaveFilePicker({ suggestedName: currentFile, types: [{ description: 'Arquivo de texto/código', accept: { 'text/plain': ['.' + (currentFile.split('.').pop() || 'py')] } }] });
-                    const writable = await handle.createWritable(); await writable.write(content); await writable.close();
-                    document.getElementById('file-menu').classList.add('hidden'); showNotification('Arquivo salvo.'); return;
-                }
-            } catch (err) {
-                if (err && err.name === 'AbortError') return;
-            }
-            const blob = new Blob([content], {type:'text/plain;charset=utf-8'});
-            const url = URL.createObjectURL(blob), a = document.createElement('a');
-            a.href = url; a.download = currentFile; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-            document.getElementById('file-menu').classList.add('hidden'); showNotification('Download do arquivo iniciado.');
-        }
-       function exportProject() {
-    if (editorHasOpenFile) {
-        virtualFiles[currentFile] = getEditorValue();
-    }
-    persistVirtualFiles();
-            const project = { format: 'PyCodeStudioProject', version: 1, currentFile, files: virtualFiles };
-            const blob = new Blob([JSON.stringify(project, null, 2)], {type:'application/json;charset=utf-8'});
-            const url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = 'pycode-studio-project.json'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-            document.getElementById('file-menu').classList.add('hidden'); showNotification('Projeto completo exportado.');
-        }
-        async function importUserFile(event) {
-            const file = event.target.files && event.target.files[0]; if (!file) return;
-            try {
-                const content = await file.text();
-                if (file.name.toLowerCase().endsWith('.json')) {
-                    try {
-                        const parsed = JSON.parse(content);
-                        if (parsed && parsed.format === 'PyCodeStudioProject' && parsed.files && typeof parsed.files === 'object') {
-                            Object.entries(parsed.files).forEach(([name, value]) => { if (typeof value === 'string') virtualFiles[name] = value; });
-                            currentFile = Object.prototype.hasOwnProperty.call(virtualFiles, parsed.currentFile) ? parsed.currentFile : Object.keys(virtualFiles)[0];
-                            refreshFileExplorer(); switchFile(currentFile); persistVirtualFiles(); showNotification('Projeto importado com os arquivos e conteúdos.');
-                            document.getElementById('file-menu').classList.add('hidden'); return;
-                        }
-                    } catch (_) { /* Importar como arquivo de texto comum se não for um projeto PyCode. */ }
-                }
-                virtualFiles[file.name] = content; refreshFileExplorer(); switchFile(file.name); persistVirtualFiles();
-                showNotification('Arquivo importado com todo o conteúdo textual: ' + file.name);
-            } catch (err) { showNotification('Não foi possível ler este arquivo como texto.'); }
-            finally { event.target.value = ''; document.getElementById('file-menu').classList.add('hidden'); }
-        }
-
-        const extraDocs = [
-            ['input()', 'Lê um texto digitado pelo usuário.', 'nome = input("Seu nome: ")\\nprint(nome)', 'Entrada/Saída'],
-            ['int() / float()', 'Convertem valores para números.', 'idade = int("18")\\npreco = float("9.5")', 'Conversão'],
-            ['str() / bool()', 'Convertem valores para texto ou booleano.', 'print(str(123))\\nprint(bool(1))', 'Conversão'],
-            ['sum()', 'Soma itens numéricos.', 'print(sum([2, 3, 4]))', 'Função nativa'],
-            ['min() / max()', 'Retornam o menor ou maior item.', 'print(min([4, 1, 9]))\\nprint(max([4, 1, 9]))', 'Função nativa'],
-            ['enumerate()', 'Fornece índice e item na iteração.', 'for i, fruta in enumerate(["uva", "pera"]):\\n    print(i, fruta)', 'Iteração'],
-            ['zip()', 'Combina iteráveis posição a posição.', 'for nome, nota in zip(["Ana", "Bia"], [8, 9]):\\n    print(nome, nota)', 'Iteração'],
-            ['sorted()', 'Cria uma lista ordenada.', 'print(sorted([3, 1, 2]))', 'Ordenação'],
-            ['abs() / round()', 'Calculam valor absoluto e arredondamento.', 'print(abs(-7))\\nprint(round(3.14159, 2))', 'Matemática'],
-            ['all() / any()', 'Testam se todos ou algum item é verdadeiro.', 'print(all([True, True]))\\nprint(any([False, True]))', 'Booleanos'],
-            ['try / except', 'Permite tratar exceções.', 'try:\\n    numero = int("abc")\\nexcept ValueError:\\n    print("Valor inválido")', 'Exceções'],
-            ['while', 'Repete enquanto a condição for verdadeira.', 'n = 0\\nwhile n < 3:\\n    print(n)\\n    n += 1', 'Repetição'],
-            ['break / continue', 'Interrompem ou avançam no laço.', 'for n in range(5):\\n    if n == 2: continue\\n    if n == 4: break\\n    print(n)', 'Controle de fluxo'],
-            ['set() / tuple()', 'Conjunto sem duplicatas e tupla imutável.', 'print(set([1, 1, 2]))\\nponto = (10, 20)\\nprint(ponto[0])', 'Estruturas de dados'],
-            ['dict.get()', 'Lê uma chave com valor padrão opcional.', 'pessoa = {"nome": "Ana"}\\nprint(pessoa.get("idade", 0))', 'Dicionários'],
-            ['list.pop()', 'Remove e retorna item da lista.', 'itens = [1, 2, 3]\\nprint(itens.pop())', 'Listas'],
-            ['str.split() / strip()', 'Divide texto ou remove espaços das extremidades.', 'print("a,b,c".split(","))\\nprint("  oi  ".strip())', 'Strings'],
-            ['str.replace()', 'Substitui um trecho de texto.', 'print("banana".replace("a", "o"))', 'Strings'],
-            ['f-string', 'Insere valores em texto usando chaves.', 'nome = "Ana"\\nprint(f"Olá, {nome}!")', 'Strings'],
-            ['lambda', 'Define uma função anônima simples.', 'dobro = lambda n: n * 2\\nprint(dobro(4))', 'Funções'],
-            ['class', 'Define uma classe.', 'class Pessoa:\\n    def __init__(self, nome):\\n        self.nome = nome\\np = Pessoa("Ana")\\nprint(p.nome)', 'Orientação a objetos'],
-            ['import', 'Importa módulos.', 'import math\\nprint(math.sqrt(16))', 'Módulos'],
-            ['with open()', 'Abre arquivo e gerencia o recurso automaticamente.', 'with open("exemplo.txt", "w", encoding="utf-8") as arquivo:\\n    arquivo.write("Olá")', 'Arquivos'],
-            ['and / or / not', 'Operadores lógicos.', 'print(5 > 2 and 3 > 1)\\nprint(not False)', 'Operadores'],
-            ['is / in', 'Verifica identidade ou pertencimento.', 'print("p" in "python")', 'Operadores'],
-            ['None', 'Representa ausência de valor.', 'resultado = None\\nprint(resultado is None)', 'Valores especiais']
-        ];
-        // Catálogo pesquisável da referência Python: funções nativas, palavras-chave, métodos de tipos e módulos padrão.
-        const pythonBuiltins = ["ArithmeticError", "AssertionError", "AttributeError", "BaseException", "BaseExceptionGroup", "BlockingIOError", "BrokenPipeError", "BufferError", "BytesWarning", "ChildProcessError", "ConnectionAbortedError", "ConnectionError", "ConnectionRefusedError", "ConnectionResetError", "DeprecationWarning", "EOFError", "Ellipsis", "EncodingWarning", "EnvironmentError", "Exception", "ExceptionGroup", "False", "FileExistsError", "FileNotFoundError", "FloatingPointError", "FutureWarning", "GeneratorExit", "IOError", "ImportError", "ImportWarning", "IndentationError", "IndexError", "InterruptedError", "IsADirectoryError", "KeyError", "KeyboardInterrupt", "LookupError", "MemoryError", "ModuleNotFoundError", "NameError", "None", "NotADirectoryError", "NotImplemented", "NotImplementedError", "OSError", "OverflowError", "PendingDeprecationWarning", "PermissionError", "ProcessLookupError", "PythonFinalizationError", "RecursionError", "ReferenceError", "ResourceWarning", "RuntimeError", "RuntimeWarning", "StopAsyncIteration", "StopIteration", "SyntaxError", "SyntaxWarning", "SystemError", "SystemExit", "TabError", "TimeoutError", "True", "TypeError", "UnboundLocalError", "UnicodeDecodeError", "UnicodeEncodeError", "UnicodeError", "UnicodeTranslateError", "UnicodeWarning", "UserWarning", "ValueError", "Warning", "ZeroDivisionError", "abs", "aiter", "all", "anext", "any", "ascii", "bin", "bool", "breakpoint", "bytearray", "bytes", "callable", "chr", "classmethod", "compile", "complex", "copyright", "credits", "delattr", "dict", "dir", "divmod", "enumerate", "eval", "exec", "exit", "filter", "float", "format", "frozenset", "getattr", "globals", "hasattr", "hash", "help", "hex", "id", "input", "int", "isinstance", "issubclass", "iter", "len", "license", "list", "locals", "map", "max", "memoryview", "min", "next", "object", "oct", "open", "ord", "pow", "print", "property", "quit", "range", "repr", "reversed", "round", "set", "setattr", "slice", "sorted", "staticmethod", "str", "sum", "super", "tuple", "type", "vars", "zip"];
-        const pythonKeywords = ["False", "None", "True", "and", "as", "assert", "async", "await", "break", "class", "continue", "def", "del", "elif", "else", "except", "finally", "for", "from", "global", "if", "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise", "return", "try", "while", "with", "yield", "_", "case", "match", "type"];
-        const pythonStdlibModules = ["__future__", "_abc", "_aix_support", "_android_support", "_apple_support", "_ast", "_asyncio", "_bisect", "_blake2", "_bz2", "_codecs", "_codecs_cn", "_codecs_hk", "_codecs_iso2022", "_codecs_jp", "_codecs_kr", "_codecs_tw", "_collections", "_collections_abc", "_colorize", "_compat_pickle", "_compression", "_contextvars", "_csv", "_ctypes", "_curses", "_curses_panel", "_datetime", "_dbm", "_decimal", "_elementtree", "_frozen_importlib", "_frozen_importlib_external", "_functools", "_gdbm", "_hashlib", "_heapq", "_imp", "_interpchannels", "_interpqueues", "_interpreters", "_io", "_ios_support", "_json", "_locale", "_lsprof", "_lzma", "_markupbase", "_md5", "_multibytecodec", "_multiprocessing", "_opcode", "_opcode_metadata", "_operator", "_osx_support", "_overlapped", "_pickle", "_posixshmem", "_posixsubprocess", "_py_abc", "_pydatetime", "_pydecimal", "_pyio", "_pylong", "_pyrepl", "_queue", "_random", "_scproxy", "_sha1", "_sha2", "_sha3", "_signal", "_sitebuiltins", "_socket", "_sqlite3", "_sre", "_ssl", "_stat", "_statistics", "_string", "_strptime", "_struct", "_suggestions", "_symtable", "_sysconfig", "_thread", "_threading_local", "_tkinter", "_tokenize", "_tracemalloc", "_typing", "_uuid", "_warnings", "_weakref", "_weakrefset", "_winapi", "_wmi", "_zoneinfo", "abc", "antigravity", "argparse", "array", "ast", "asyncio", "atexit", "base64", "bdb", "binascii", "bisect", "builtins", "bz2", "cProfile", "calendar", "cmath", "cmd", "code", "codecs", "codeop", "collections", "colorsys", "compileall", "concurrent", "configparser", "contextlib", "contextvars", "copy", "copyreg", "csv", "ctypes", "curses", "dataclasses", "datetime", "dbm", "decimal", "difflib", "dis", "doctest", "email", "encodings", "ensurepip", "enum", "errno", "faulthandler", "fcntl", "filecmp", "fileinput", "fnmatch", "fractions", "ftplib", "functools", "gc", "genericpath", "getopt", "getpass", "gettext", "glob", "graphlib", "grp", "gzip", "hashlib", "heapq", "hmac", "html", "http", "idlelib", "imaplib", "importlib", "inspect", "io", "ipaddress", "itertools", "json", "keyword", "linecache", "locale", "logging", "lzma", "mailbox", "marshal", "math", "mimetypes", "mmap", "modulefinder", "msvcrt", "multiprocessing", "netrc", "nt", "ntpath", "nturl2path", "numbers", "opcode", "operator", "optparse", "os", "pathlib", "pdb", "pickle", "pickletools", "pkgutil", "platform", "plistlib", "poplib", "posix", "posixpath", "pprint", "profile", "pstats", "pty", "pwd", "py_compile", "pyclbr", "pydoc", "pydoc_data", "pyexpat", "queue", "quopri", "random", "re", "readline", "reprlib", "resource", "rlcompleter", "runpy", "sched", "secrets", "select", "selectors", "shelve", "shlex", "shutil", "signal", "site", "smtplib", "socket", "socketserver", "sqlite3", "sre_compile", "sre_constants", "sre_parse", "ssl", "stat", "statistics", "string", "stringprep", "struct", "subprocess", "symtable", "sys", "sysconfig", "syslog", "tabnanny", "tarfile", "tempfile", "termios", "textwrap", "this", "threading", "time", "timeit", "tkinter", "token", "tokenize", "tomllib", "trace", "traceback", "tracemalloc", "tty", "turtle", "turtledemo", "types", "typing", "unicodedata", "unittest", "urllib", "uuid", "venv", "warnings", "wave", "weakref", "webbrowser", "winreg", "winsound", "wsgiref", "xml", "xmlrpc", "zipapp", "zipfile", "zipimport", "zlib", "zoneinfo"];
-        const pythonTypeMethods = {"str": ["__add__", "__class__", "__contains__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getitem__", "__getnewargs__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__len__", "__lt__", "__mod__", "__mul__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__rmod__", "__rmul__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__", "capitalize", "casefold", "center", "count", "encode", "endswith", "expandtabs", "find", "format", "format_map", "index", "isalnum", "isalpha", "isascii", "isdecimal", "isdigit", "isidentifier", "islower", "isnumeric", "isprintable", "isspace", "istitle", "isupper", "join", "ljust", "lower", "lstrip", "maketrans", "partition", "removeprefix", "removesuffix", "replace", "rfind", "rindex", "rjust", "rpartition", "rsplit", "rstrip", "split", "splitlines", "startswith", "strip", "swapcase", "title", "translate", "upper", "zfill"], "list": ["__add__", "__class__", "__class_getitem__", "__contains__", "__delattr__", "__delitem__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getitem__", "__getstate__", "__gt__", "__hash__", "__iadd__", "__imul__", "__init__", "__init_subclass__", "__iter__", "__le__", "__len__", "__lt__", "__mul__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__reversed__", "__rmul__", "__setattr__", "__setitem__", "__sizeof__", "__str__", "__subclasshook__", "append", "clear", "copy", "count", "extend", "index", "insert", "pop", "remove", "reverse", "sort"], "tuple": ["__add__", "__class__", "__class_getitem__", "__contains__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getitem__", "__getnewargs__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__len__", "__lt__", "__mul__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__rmul__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__", "count", "index"], "dict": ["__class__", "__class_getitem__", "__contains__", "__delattr__", "__delitem__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getitem__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__ior__", "__iter__", "__le__", "__len__", "__lt__", "__ne__", "__new__", "__or__", "__reduce__", "__reduce_ex__", "__repr__", "__reversed__", "__ror__", "__setattr__", "__setitem__", "__sizeof__", "__str__", "__subclasshook__", "clear", "copy", "fromkeys", "get", "items", "keys", "pop", "popitem", "setdefault", "update", "values"], "set": ["__and__", "__class__", "__class_getitem__", "__contains__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__iand__", "__init__", "__init_subclass__", "__ior__", "__isub__", "__iter__", "__ixor__", "__le__", "__len__", "__lt__", "__ne__", "__new__", "__or__", "__rand__", "__reduce__", "__reduce_ex__", "__repr__", "__ror__", "__rsub__", "__rxor__", "__setattr__", "__sizeof__", "__str__", "__sub__", "__subclasshook__", "__xor__", "add", "clear", "copy", "difference", "difference_update", "discard", "intersection", "intersection_update", "isdisjoint", "issubset", "issuperset", "pop", "remove", "symmetric_difference", "symmetric_difference_update", "union", "update"], "frozenset": ["__and__", "__class__", "__class_getitem__", "__contains__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__len__", "__lt__", "__ne__", "__new__", "__or__", "__rand__", "__reduce__", "__reduce_ex__", "__repr__", "__ror__", "__rsub__", "__rxor__", "__setattr__", "__sizeof__", "__str__", "__sub__", "__subclasshook__", "__xor__", "copy", "difference", "intersection", "isdisjoint", "issubset", "issuperset", "symmetric_difference", "union"], "int": ["__abs__", "__add__", "__and__", "__bool__", "__ceil__", "__class__", "__delattr__", "__dir__", "__divmod__", "__doc__", "__eq__", "__float__", "__floor__", "__floordiv__", "__format__", "__ge__", "__getattribute__", "__getnewargs__", "__getstate__", "__gt__", "__hash__", "__index__", "__init__", "__init_subclass__", "__int__", "__invert__", "__le__", "__lshift__", "__lt__", "__mod__", "__mul__", "__ne__", "__neg__", "__new__", "__or__", "__pos__", "__pow__", "__radd__", "__rand__", "__rdivmod__", "__reduce__", "__reduce_ex__", "__repr__", "__rfloordiv__", "__rlshift__", "__rmod__", "__rmul__", "__ror__", "__round__", "__rpow__", "__rrshift__", "__rshift__", "__rsub__", "__rtruediv__", "__rxor__", "__setattr__", "__sizeof__", "__str__", "__sub__", "__subclasshook__", "__truediv__", "__trunc__", "__xor__", "as_integer_ratio", "bit_count", "bit_length", "conjugate", "denominator", "from_bytes", "imag", "is_integer", "numerator", "real", "to_bytes"], "float": ["__abs__", "__add__", "__bool__", "__ceil__", "__class__", "__delattr__", "__dir__", "__divmod__", "__doc__", "__eq__", "__float__", "__floor__", "__floordiv__", "__format__", "__ge__", "__getattribute__", "__getformat__", "__getnewargs__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__int__", "__le__", "__lt__", "__mod__", "__mul__", "__ne__", "__neg__", "__new__", "__pos__", "__pow__", "__radd__", "__rdivmod__", "__reduce__", "__reduce_ex__", "__repr__", "__rfloordiv__", "__rmod__", "__rmul__", "__round__", "__rpow__", "__rsub__", "__rtruediv__", "__setattr__", "__sizeof__", "__str__", "__sub__", "__subclasshook__", "__truediv__", "__trunc__", "as_integer_ratio", "conjugate", "fromhex", "hex", "imag", "is_integer", "real"], "complex": ["__abs__", "__add__", "__bool__", "__class__", "__complex__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getnewargs__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__le__", "__lt__", "__mul__", "__ne__", "__neg__", "__new__", "__pos__", "__pow__", "__radd__", "__reduce__", "__reduce_ex__", "__repr__", "__rmul__", "__rpow__", "__rsub__", "__rtruediv__", "__setattr__", "__sizeof__", "__str__", "__sub__", "__subclasshook__", "__truediv__", "conjugate", "imag", "real"], "bool": ["__abs__", "__add__", "__and__", "__bool__", "__ceil__", "__class__", "__delattr__", "__dir__", "__divmod__", "__doc__", "__eq__", "__float__", "__floor__", "__floordiv__", "__format__", "__ge__", "__getattribute__", "__getnewargs__", "__getstate__", "__gt__", "__hash__", "__index__", "__init__", "__init_subclass__", "__int__", "__invert__", "__le__", "__lshift__", "__lt__", "__mod__", "__mul__", "__ne__", "__neg__", "__new__", "__or__", "__pos__", "__pow__", "__radd__", "__rand__", "__rdivmod__", "__reduce__", "__reduce_ex__", "__repr__", "__rfloordiv__", "__rlshift__", "__rmod__", "__rmul__", "__ror__", "__round__", "__rpow__", "__rrshift__", "__rshift__", "__rsub__", "__rtruediv__", "__rxor__", "__setattr__", "__sizeof__", "__str__", "__sub__", "__subclasshook__", "__truediv__", "__trunc__", "__xor__", "as_integer_ratio", "bit_count", "bit_length", "conjugate", "denominator", "from_bytes", "imag", "is_integer", "numerator", "real", "to_bytes"], "bytes": ["__add__", "__buffer__", "__bytes__", "__class__", "__contains__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getitem__", "__getnewargs__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__len__", "__lt__", "__mod__", "__mul__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__rmod__", "__rmul__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__", "capitalize", "center", "count", "decode", "endswith", "expandtabs", "find", "fromhex", "hex", "index", "isalnum", "isalpha", "isascii", "isdigit", "islower", "isspace", "istitle", "isupper", "join", "ljust", "lower", "lstrip", "maketrans", "partition", "removeprefix", "removesuffix", "replace", "rfind", "rindex", "rjust", "rpartition", "rsplit", "rstrip", "split", "splitlines", "startswith", "strip", "swapcase", "title", "translate", "upper", "zfill"], "bytearray": ["__add__", "__alloc__", "__buffer__", "__class__", "__contains__", "__delattr__", "__delitem__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getitem__", "__getstate__", "__gt__", "__hash__", "__iadd__", "__imul__", "__init__", "__init_subclass__", "__iter__", "__le__", "__len__", "__lt__", "__mod__", "__mul__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__release_buffer__", "__repr__", "__rmod__", "__rmul__", "__setattr__", "__setitem__", "__sizeof__", "__str__", "__subclasshook__", "append", "capitalize", "center", "clear", "copy", "count", "decode", "endswith", "expandtabs", "extend", "find", "fromhex", "hex", "index", "insert", "isalnum", "isalpha", "isascii", "isdigit", "islower", "isspace", "istitle", "isupper", "join", "ljust", "lower", "lstrip", "maketrans", "partition", "pop", "remove", "removeprefix", "removesuffix", "replace", "reverse", "rfind", "rindex", "rjust", "rpartition", "rsplit", "rstrip", "split", "splitlines", "startswith", "strip", "swapcase", "title", "translate", "upper", "zfill"], "range": ["__bool__", "__class__", "__contains__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getitem__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__len__", "__lt__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__reversed__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__", "count", "index", "start", "step", "stop"], "memoryview": ["__buffer__", "__class__", "__delattr__", "__delitem__", "__dir__", "__doc__", "__enter__", "__eq__", "__exit__", "__format__", "__ge__", "__getattribute__", "__getitem__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__len__", "__lt__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__release_buffer__", "__repr__", "__setattr__", "__setitem__", "__sizeof__", "__str__", "__subclasshook__", "c_contiguous", "cast", "contiguous", "f_contiguous", "format", "hex", "itemsize", "nbytes", "ndim", "obj", "readonly", "release", "shape", "strides", "suboffsets", "tobytes", "tolist", "toreadonly"], "slice": ["__class__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__le__", "__lt__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__", "indices", "start", "step", "stop"], "object": ["__class__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__le__", "__lt__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__"], "type": ["__abstractmethods__", "__annotations__", "__base__", "__bases__", "__basicsize__", "__call__", "__class__", "__delattr__", "__dict__", "__dictoffset__", "__dir__", "__doc__", "__eq__", "__flags__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__instancecheck__", "__itemsize__", "__le__", "__lt__", "__module__", "__mro__", "__name__", "__ne__", "__new__", "__or__", "__prepare__", "__qualname__", "__reduce__", "__reduce_ex__", "__repr__", "__ror__", "__setattr__", "__sizeof__", "__str__", "__subclasscheck__", "__subclasses__", "__subclasshook__", "__text_signature__", "__type_params__", "__weakrefoffset__", "mro"], "BaseException": ["__cause__", "__class__", "__context__", "__delattr__", "__dict__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__le__", "__lt__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__setstate__", "__sizeof__", "__str__", "__subclasshook__", "__suppress_context__", "__traceback__", "add_note", "args", "with_traceback"], "Exception": ["__cause__", "__class__", "__context__", "__delattr__", "__dict__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__le__", "__lt__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__setstate__", "__sizeof__", "__str__", "__subclasshook__", "__suppress_context__", "__traceback__", "add_note", "args", "with_traceback"], "property": ["__class__", "__delattr__", "__delete__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__get__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__isabstractmethod__", "__le__", "__lt__", "__name__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__set__", "__set_name__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__", "deleter", "fdel", "fget", "fset", "getter", "setter"], "staticmethod": ["__call__", "__class__", "__delattr__", "__dict__", "__dir__", "__doc__", "__eq__", "__format__", "__func__", "__ge__", "__get__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__isabstractmethod__", "__le__", "__lt__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__", "__wrapped__"], "classmethod": ["__class__", "__delattr__", "__dict__", "__dir__", "__doc__", "__eq__", "__format__", "__func__", "__ge__", "__get__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__isabstractmethod__", "__le__", "__lt__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__", "__wrapped__"], "enumerate": ["__class__", "__class_getitem__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__lt__", "__ne__", "__new__", "__next__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__"], "zip": ["__class__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__lt__", "__ne__", "__new__", "__next__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__setstate__", "__sizeof__", "__str__", "__subclasshook__"], "map": ["__class__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__lt__", "__ne__", "__new__", "__next__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__"], "filter": ["__class__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__lt__", "__ne__", "__new__", "__next__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__"], "reversed": ["__class__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__length_hint__", "__lt__", "__ne__", "__new__", "__next__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__setstate__", "__sizeof__", "__str__", "__subclasshook__"], "super": ["__class__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__get__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__le__", "__lt__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__self__", "__self_class__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__", "__thisclass__"], "module": ["__annotations__", "__class__", "__delattr__", "__dict__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__le__", "__lt__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__"], "function": ["__annotations__", "__builtins__", "__call__", "__class__", "__closure__", "__code__", "__defaults__", "__delattr__", "__dict__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__get__", "__getattribute__", "__getstate__", "__globals__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__kwdefaults__", "__le__", "__lt__", "__module__", "__name__", "__ne__", "__new__", "__qualname__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__", "__type_params__"], "code": ["__class__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__le__", "__lt__", "__ne__", "__new__", "__reduce__", "__reduce_ex__", "__replace__", "__repr__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__", "co_argcount", "co_cellvars", "co_code", "co_consts", "co_exceptiontable", "co_filename", "co_firstlineno", "co_flags", "co_freevars", "co_kwonlyargcount", "co_lines", "co_linetable", "co_lnotab", "co_name", "co_names", "co_nlocals", "co_positions", "co_posonlyargcount", "co_qualname", "co_stacksize", "co_varnames", "replace"], "generator": ["__class__", "__class_getitem__", "__del__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__lt__", "__name__", "__ne__", "__new__", "__next__", "__qualname__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__", "close", "gi_code", "gi_frame", "gi_running", "gi_suspended", "gi_yieldfrom", "send", "throw"], "coroutine": ["__await__", "__class__", "__class_getitem__", "__del__", "__delattr__", "__dir__", "__doc__", "__eq__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__le__", "__lt__", "__name__", "__ne__", "__new__", "__qualname__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__str__", "__subclasshook__", "close", "cr_await", "cr_code", "cr_frame", "cr_origin", "cr_running", "cr_suspended", "send", "throw"], "TextIOBase": ["__abstractmethods__", "__class__", "__del__", "__delattr__", "__dict__", "__dir__", "__doc__", "__enter__", "__eq__", "__exit__", "__firstlineno__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__lt__", "__module__", "__ne__", "__new__", "__next__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__static_attributes__", "__str__", "__subclasshook__", "close", "closed", "detach", "encoding", "errors", "fileno", "flush", "isatty", "newlines", "read", "readable", "readline", "readlines", "seek", "seekable", "tell", "truncate", "writable", "write", "writelines"], "BufferedIOBase": ["__abstractmethods__", "__class__", "__del__", "__delattr__", "__dict__", "__dir__", "__doc__", "__enter__", "__eq__", "__exit__", "__firstlineno__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__lt__", "__module__", "__ne__", "__new__", "__next__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__static_attributes__", "__str__", "__subclasshook__", "close", "closed", "detach", "fileno", "flush", "isatty", "read", "read1", "readable", "readinto", "readinto1", "readline", "readlines", "seek", "seekable", "tell", "truncate", "writable", "write", "writelines"], "RawIOBase": ["__abstractmethods__", "__class__", "__del__", "__delattr__", "__dict__", "__dir__", "__doc__", "__enter__", "__eq__", "__exit__", "__firstlineno__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__lt__", "__module__", "__ne__", "__new__", "__next__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__static_attributes__", "__str__", "__subclasshook__", "close", "closed", "fileno", "flush", "isatty", "read", "readable", "readall", "readinto", "readline", "readlines", "seek", "seekable", "tell", "truncate", "writable", "write", "writelines"], "IOBase": ["__abstractmethods__", "__class__", "__del__", "__delattr__", "__dict__", "__dir__", "__doc__", "__enter__", "__eq__", "__exit__", "__firstlineno__", "__format__", "__ge__", "__getattribute__", "__getstate__", "__gt__", "__hash__", "__init__", "__init_subclass__", "__iter__", "__le__", "__lt__", "__module__", "__ne__", "__new__", "__next__", "__reduce__", "__reduce_ex__", "__repr__", "__setattr__", "__sizeof__", "__static_attributes__", "__str__", "__subclasshook__", "close", "closed", "fileno", "flush", "isatty", "readable", "readline", "readlines", "seek", "seekable", "tell", "truncate", "writable", "writelines"]};
-        const pythonBuiltinDescriptions = {"print": "Exibe valores no fluxo de saída. Aceita sep, end, file e flush.", "input": "Lê uma linha de texto digitada pelo usuário e a retorna como str.", "len": "Retorna a quantidade de itens de uma sequência ou coleção.", "type": "Retorna o tipo de um objeto; também pode criar classes dinamicamente.", "int": "Converte um valor compatível para inteiro.", "float": "Converte um valor compatível para ponto flutuante.", "str": "Cria uma representação textual de um objeto.", "bool": "Converte um valor para True ou False.", "range": "Representa uma sequência imutável de números, muito usada em laços for.", "enumerate": "Produz pares com índice e item durante uma iteração.", "zip": "Agrupa itens de iteráveis pela mesma posição.", "sum": "Soma os itens de um iterável numérico.", "min": "Retorna o menor item ou argumento.", "max": "Retorna o maior item ou argumento.", "sorted": "Retorna uma nova lista ordenada a partir de um iterável.", "reversed": "Retorna um iterador que percorre os itens na ordem inversa.", "abs": "Retorna o valor absoluto de um número.", "round": "Arredonda um número para a precisão indicada.", "all": "Retorna True se todos os itens forem verdadeiros.", "any": "Retorna True se pelo menos um item for verdadeiro.", "isinstance": "Verifica se um objeto é instância de um tipo ou tupla de tipos.", "issubclass": "Verifica se uma classe deriva de outra classe.", "open": "Abre um arquivo e retorna um objeto de arquivo.", "help": "Exibe o sistema de ajuda interativa do Python.", "dir": "Lista nomes disponíveis em um objeto ou no escopo atual.", "id": "Retorna a identidade de um objeto.", "map": "Aplica uma função a cada item de um ou mais iteráveis.", "filter": "Seleciona itens de um iterável usando uma função de teste.", "pow": "Calcula potência, opcionalmente com módulo.", "divmod": "Retorna quociente e resto da divisão inteira.", "repr": "Retorna uma representação textual útil para depuração.", "format": "Formata um valor usando a especificação de formato.", "vars": "Retorna o atributo __dict__ de um objeto ou o escopo local.", "getattr": "Obtém um atributo de um objeto pelo nome textual.", "setattr": "Define um atributo de um objeto.", "hasattr": "Verifica se um objeto possui determinado atributo.", "delattr": "Remove um atributo de um objeto.", "chr": "Converte um ponto de código Unicode em caractere.", "ord": "Retorna o ponto de código Unicode de um caractere.", "bin": "Converte um inteiro para representação binária textual.", "oct": "Converte um inteiro para representação octal textual.", "hex": "Converte um inteiro para representação hexadecimal textual.", "list": "Cria uma lista mutável.", "tuple": "Cria uma tupla imutável.", "dict": "Cria um dicionário de pares chave-valor.", "set": "Cria um conjunto de itens únicos.", "frozenset": "Cria um conjunto imutável.", "complex": "Cria um número complexo.", "bytes": "Cria uma sequência imutável de bytes.", "bytearray": "Cria uma sequência mutável de bytes.", "callable": "Verifica se um objeto pode ser chamado como função.", "compile": "Compila código-fonte para um objeto de código.", "eval": "Avalia uma expressão Python. Use apenas com código confiável.", "exec": "Executa código Python. Use apenas com código confiável.", "iter": "Obtém um iterador de um objeto iterável.", "next": "Obtém o próximo item de um iterador.", "slice": "Cria um objeto que representa uma fatia.", "memoryview": "Permite acessar a memória de um objeto compatível sem copiar os dados."};
-        const pythonKeywordDescriptions = {
-          'if':'Executa um bloco quando uma condição é verdadeira.','elif':'Testa outra condição se as anteriores forem falsas.','else':'Define o bloco alternativo de uma condição ou laço.','for':'Percorre itens de um iterável.','while':'Repete um bloco enquanto a condição for verdadeira.','def':'Define uma função.','return':'Encerra uma função e pode devolver um valor.','class':'Define uma classe.','import':'Importa um módulo ou pacote.','from':'Importa nomes específicos de um módulo.','try':'Inicia um bloco de tratamento de exceções.','except':'Trata uma exceção.','finally':'Define um bloco executado após try, normalmente para limpeza.','raise':'Dispara uma exceção.','with':'Usa um gerenciador de contexto.','as':'Cria um alias ou nome associado, por exemplo em import/with/except.','pass':'Instrução vazia usada como marcador.','break':'Encerra o laço mais interno.','continue':'Pula para a próxima iteração do laço.','and':'Operador lógico E.','or':'Operador lógico OU.','not':'Inverte o valor lógico.','in':'Testa pertencimento ou participa de laços for.','is':'Testa identidade de objetos.','lambda':'Cria uma função anônima simples.','yield':'Produz um valor em uma função geradora.','async':'Declara uma função ou contexto assíncrono.','await':'Espera o resultado de uma operação awaitable dentro de async.','assert':'Verifica uma condição e dispara AssertionError se falsa.','del':'Remove uma referência, item ou atributo.','global':'Declara que um nome se refere ao escopo global.','nonlocal':'Refere-se a uma variável do escopo externo não global.','match':'Inicia uma instrução de correspondência estrutural.','case':'Define um padrão dentro de match.','True':'Valor booleano verdadeiro.','False':'Valor booleano falso.','None':'Representa ausência de valor.'
-        };
-        const pythonModuleDescriptions = {
-          math:'Funções matemáticas e constantes.', random:'Geração de números pseudoaleatórios.', statistics:'Estatística básica: média, mediana, dispersão.', datetime:'Datas, horários e durações.', time:'Acesso a relógios e pausas.', pathlib:'Caminhos de arquivos e diretórios orientados a objetos.', os:'Interfaces com recursos do sistema operacional.', sys:'Parâmetros e funções do interpretador Python.', json:'Codificação e decodificação JSON.', re:'Expressões regulares para busca e substituição de texto.', csv:'Leitura e escrita de arquivos CSV.', sqlite3:'Banco de dados SQLite embutido.', collections:'Contêineres especializados como Counter e deque.', itertools:'Ferramentas eficientes para iteração.', functools:'Funções utilitárias para funções e chamadas.', subprocess:'Execução e comunicação com processos externos.', threading:'Execução concorrente com threads.', asyncio:'Concorrência assíncrona com async e await.', logging:'Registro estruturado de eventos e mensagens.', argparse:'Análise de argumentos da linha de comando.', unittest:'Estrutura de testes automatizados.', doctest:'Testes baseados em exemplos da documentação.', typing:'Anotações e ferramentas de tipagem.', dataclasses:'Criação de classes para armazenar dados.', decimal:'Aritmética decimal de precisão controlada.', fractions:'Aritmética com números racionais.', hashlib:'Funções de hash criptográfico.', secrets:'Geração de valores aleatórios adequados para segredos.', urllib:'Ferramentas para trabalhar com URLs.', http:'Protocolos e utilitários HTTP.', socket:'Comunicação em rede de baixo nível.', email:'Criação e análise de mensagens de e-mail.', smtplib:'Cliente SMTP para envio de e-mail.', zipfile:'Leitura e criação de arquivos ZIP.', tarfile:'Leitura e criação de arquivos TAR.', gzip:'Compactação e descompactação gzip.', shutil:'Operações de alto nível com arquivos.', tempfile:'Criação de arquivos e diretórios temporários.', glob:'Busca de arquivos usando padrões.', fnmatch:'Correspondência de nomes com padrões.', pickle:'Serialização de objetos Python; não use com dados não confiáveis.', pprint:'Impressão formatada de estruturas de dados.', textwrap:'Quebra e preenchimento de texto.', string:'Constantes e utilitários para texto.', enum:'Criação de enumerações.', copy:'Cópia rasa e profunda de objetos.', heapq:'Fila de prioridade baseada em heap.', bisect:'Busca binária e inserção ordenada.', array:'Vetores compactos de valores numéricos.', xml:'Ferramentas para processar XML.', html:'Utilitários relacionados a HTML.', tkinter:'Interface gráfica de desktop com Tk.', turtle:'Gráficos educacionais com uma tartaruga.', inspect:'Inspeção de objetos, funções e classes.', ast:'Árvore sintática abstrata de código Python.', dis:'Desmontagem de bytecode Python.', pdb:'Depurador interativo do Python.', traceback:'Formatação e análise de rastreamentos de erro.', platform:'Informações sobre sistema operacional e plataforma.', locale:'Configurações regionais e formatação local.', zoneinfo:'Fusos horários IANA.'
-        };
-        const pythonMethodDescriptions = {
-          append:'Adiciona um item ao final de uma lista.', extend:'Adiciona todos os itens de um iterável à lista.', insert:'Insere um item em uma posição da lista.', pop:'Remove e retorna um item.', remove:'Remove a primeira ocorrência de um valor.', sort:'Ordena a lista no próprio objeto.', reverse:'Inverte a ordem dos itens no próprio objeto.', clear:'Remove todos os itens.', copy:'Retorna uma cópia rasa.', count:'Conta ocorrências de um valor.', index:'Retorna o índice da primeira ocorrência.', split:'Divide uma string em uma lista de partes.', splitlines:'Divide o texto em linhas.', strip:'Remove espaços ou caracteres das extremidades.', lstrip:'Remove espaços ou caracteres do início.', rstrip:'Remove espaços ou caracteres do final.', replace:'Retorna uma string com ocorrências substituídas.', join:'Une strings usando o texto atual como separador.', lower:'Retorna o texto em minúsculas.', upper:'Retorna o texto em maiúsculas.', title:'Retorna o texto com iniciais em maiúsculas.', find:'Procura uma substring e retorna seu índice ou -1.', startswith:'Verifica se o texto começa com determinado prefixo.', endswith:'Verifica se o texto termina com determinado sufixo.', get:'Obtém o valor de uma chave, com padrão opcional.', keys:'Retorna uma visão das chaves do dicionário.', values:'Retorna uma visão dos valores do dicionário.', items:'Retorna pares chave-valor do dicionário.', update:'Atualiza um dicionário com novos pares.', setdefault:'Obtém uma chave ou define seu valor padrão.', add:'Adiciona um elemento ao conjunto.', discard:'Remove um elemento do conjunto se estiver presente.', union:'Retorna a união de conjuntos.', intersection:'Retorna a interseção de conjuntos.', difference:'Retorna elementos que estão neste conjunto, mas não no outro.', issubset:'Verifica se o conjunto está contido em outro.', issuperset:'Verifica se contém todos os elementos de outro conjunto.'
-        };
-        function pythonDocsUrl(item) {
-          if (item.kind === 'exception') return 'https://docs.python.org/3/library/exceptions.html#' + encodeURIComponent(item.name);
-          if (item.kind === 'built-in' || item.kind === 'constant') return 'https://docs.python.org/3/library/functions.html#' + encodeURIComponent(item.name.toLowerCase());
-          if (item.kind === 'keyword') return 'https://docs.python.org/3/reference/lexical_analysis.html#keywords';
-          if (item.kind === 'method') return 'https://docs.python.org/3/library/stdtypes.html';
-          if (item.kind === 'module') return 'https://docs.python.org/3/library/' + item.name + '.html';
-          return 'https://docs.python.org/3/search.html?q=' + encodeURIComponent(item.name);
-        }
-        function buildPythonReference() {
-          const docs = [];
-          pythonBuiltins.forEach(name => {
-            let kind = ['True','False','None','Ellipsis','NotImplemented'].includes(name) ? 'constant' : (/Error$|Exception$|Warning$|^BaseException/.test(name) ? 'exception' : 'built-in');
-            let desc = pythonBuiltinDescriptions[name] || (kind === 'exception' ? 'Tipo de exceção usado para sinalizar ou tratar uma categoria de erro.' : kind === 'constant' ? 'Constante especial integrada ao Python.' : 'Nome integrado ao interpretador Python. Consulte a referência oficial para assinatura, parâmetros e exemplos.');
-            const code = ({print:'print("Olá, Python!")',input:'nome = input("Seu nome: ")\nprint(nome)',type:'print(type(123))',len:'print(len([1, 2, 3]))',range:'for i in range(3):\n    print(i)',enumerate:'for indice, item in enumerate(["a", "b"]):\n    print(indice, item)',zip:'for nome, nota in zip(["Ana", "Bia"], [8, 9]):\n    print(nome, nota)',sum:'print(sum([1, 2, 3]))',sorted:'print(sorted([3, 1, 2]))',int:'print(int("42"))',float:'print(float("3.14"))',str:'print(str(123))',bool:'print(bool(1))',isinstance:'print(isinstance(10, int))',abs:'print(abs(-7))',round:'print(round(3.14159, 2))',max:'print(max([3, 8, 2]))',min:'print(min([3, 8, 2]))',open:'with open("exemplo.txt", "w", encoding="utf-8") as arquivo:\n    arquivo.write("Olá")'})[name] || name + (['print','input','len','type','range','sum','max','min','sorted','open'].includes(name) ? '()' : '');
-            docs.push({name, desc, code, kind, category: kind === 'exception' ? 'Exceções' : kind === 'constant' ? 'Constantes' : 'Funções e tipos nativos'});
-          });
-          pythonKeywords.forEach(name => docs.push({name, desc: pythonKeywordDescriptions[name] || 'Palavra-chave da linguagem Python. Consulte a referência oficial para regras de sintaxe e exemplos.', code: ({if:'idade = 18\nif idade >= 18:\n    print("Maior de idade")',for:'for item in [1, 2, 3]:\n    print(item)',def:'def saudar(nome):\n    return f"Olá, {nome}"\n\nprint(saudar("Ana"))',class:'class Pessoa:\n    def __init__(self, nome):\n        self.nome = nome',try:'try:\n    numero = int("abc")\nexcept ValueError:\n    print("Valor inválido")',while:'contador = 0\nwhile contador < 3:\n    print(contador)\n    contador += 1'})[name] || '# Palavra-chave Python: ' + name + '\n# Consulte a referência oficial para regras de sintaxe.', kind:'keyword', category:'Palavras-chave'}));
-          Object.entries(pythonTypeMethods).forEach(([type, methods]) => methods.forEach(method => docs.push({name:type + '.' + method, desc:pythonMethodDescriptions[method] || 'Método de ' + type + '. Consulte a documentação oficial para parâmetros e comportamento exato.', code:({ 'str.split':'print("a,b,c".split(","))','str.strip':'print("  olá  ".strip())','str.replace':'print("banana".replace("a", "o"))','str.lower':'print("PYTHON".lower())','str.upper':'print("python".upper())','list.append':'itens = [1, 2]\nitens.append(3)\nprint(itens)','list.pop':'itens = [1, 2, 3]\nprint(itens.pop())','dict.get':'pessoa = {"nome": "Ana"}\nprint(pessoa.get("idade", 0))','dict.items':'pessoa = {"nome": "Ana", "idade": 20}\nfor chave, valor in pessoa.items():\n    print(chave, valor)','set.add':'valores = {1, 2}\nvalores.add(3)\nprint(valores)'})[type + '.' + method] || '# Exemplo de uso: ' + type + '.' + method + '(...)\n# Consulte a referência oficial para os parâmetros exigidos.', kind:'method', category:'Métodos de tipos'})));
-          pythonStdlibModules.forEach(name => {
-            if (name.startsWith('_')) return;
-            docs.push({name, desc:(pythonModuleDescriptions[name] || 'Módulo da biblioteca padrão do Python. Consulte a página oficial para classes, funções, constantes e exemplos.') + ' A disponibilidade de alguns módulos depende do ambiente e pode variar no Python executado no navegador.', code:'import ' + name + '\nprint("Módulo ' + name + ' importado")', kind:'module', category:'Biblioteca padrão'});
-          });
-          if (Array.isArray(extraDocs)) extraDocs.forEach(([name,desc,code,category]) => docs.push({name,desc,code,kind:'example',category}));
-          const unique = new Map(); docs.forEach(item => { const key=item.name.toLowerCase(); if (!unique.has(key)) unique.set(key,item); });
-          return Array.from(unique.values()).sort((a,b) => a.name.localeCompare(b.name));
-        }
-        let pythonReferenceCache = null;
-        function getPythonReference() { if (!pythonReferenceCache) pythonReferenceCache = buildPythonReference(); return pythonReferenceCache; }
-        function escapeHtml(value) { return String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-        function searchPythonReference(inputId, resultsId) {
-          const query = (document.getElementById(inputId)?.value || '').trim().toLowerCase();
-          const container = document.getElementById(resultsId); if (!container) return;
-          if (!query) { container.innerHTML = '<p class="text-sm text-gray-500">Digite um termo para pesquisar na referência Python.</p>'; return; }
-          const words = query.split(/\s+/).filter(Boolean);
-          const results = getPythonReference().map(item => ({...item, score: words.reduce((score,word) => score + ((item.name.toLowerCase() === word) ? 8 : item.name.toLowerCase().includes(word) ? 4 : item.desc.toLowerCase().includes(word) ? 1 : item.category.toLowerCase().includes(word) ? 1 : 0), 0)})).filter(item => item.score > 0).sort((a,b) => b.score-a.score || a.name.localeCompare(b.name)).slice(0, 60);
-          if (!results.length) {
-            container.innerHTML = '<div class="doc-result-card"><p class="text-sm text-gray-200">Nenhum resultado local para <strong>' + escapeHtml(query) + '</strong>.</p><p class="text-xs text-gray-400 mt-2">Pesquise também na documentação oficial, que possui índice completo e atualizado.</p><a class="text-vscode-accent text-xs underline" target="_blank" rel="noopener" href="https://docs.python.org/3/search.html?q=' + encodeURIComponent(query) + '">Buscar na documentação oficial</a></div>';
-            return;
-          }
-          container.innerHTML = results.map((item,index) => '<article class="doc-result-card"><div class="flex flex-wrap justify-between gap-2 items-start"><div><h3 class="font-mono text-vscode-keyword font-semibold text-base">' + escapeHtml(item.name) + '</h3><span class="text-[10px] text-gray-400">' + escapeHtml(item.category) + '</span></div><a class="text-xs text-vscode-accent underline" href="' + escapeHtml(pythonDocsUrl(item)) + '" target="_blank" rel="noopener">Referência oficial ↗</a></div><p class="text-sm text-gray-300 mt-2">' + escapeHtml(item.desc) + '</p><pre class="bg-[#181818] text-green-300 rounded p-3 mt-3 text-xs overflow-auto whitespace-pre-wrap">' + escapeHtml(item.code || '# Consulte a documentação oficial para ver exemplos de ' + item.name) + '</pre><div class="flex flex-wrap gap-2 mt-3"><button class="voice-action text-white" onclick="insertReferenceCode(' + index + ', &quot;' + escapeHtml(resultsId) + '&quot;)"><i class="fas fa-code mr-1"></i> Inserir no editor</button><button class="voice-action text-white" onclick="speakReference(5, &quot;docs-search-results&quot;)"><i class="fas fa-volume-up mr-1"></i> Ler explicação</button><button class="voice-action text-white" onclick="stopExplanationSpeech()"><i class="fas fa-stop mr-1"></i> Parar de ler</button></div></article>').join('');
-          container._currentResults = results;
-        }
-        function insertReferenceCode(index, resultsId) {
-          const item = document.getElementById(resultsId)?._currentResults?.[index]; if (!item) return;
-          setActiveTab('editor'); const current = getEditorValue(); setEditorValue(current + (current.trim() ? '\n\n' : '') + (item.code || '# Exemplo para ' + item.name));
-          if (monacoEditor) monacoEditor.focus();
-        }
-        function speakReference(index, resultsId) {
-          const item = document.getElementById(resultsId)?._currentResults?.[index]; if (!item) return;
-          if (!('speechSynthesis' in window)) { showNotification('A leitura em voz alta não é compatível com este navegador.'); return; }
-          window.speechSynthesis.cancel();
-          const text = item.name + '. ' + item.desc + '. Exemplo de código: ' + (item.code || 'consulte a documentação oficial');
-          const utterance = new SpeechSynthesisUtterance(text); utterance.lang = 'pt-BR'; utterance.rate = 0.92; window.speechSynthesis.speak(utterance);
-        }
-        function stopExplanationSpeech() { if ('speechSynthesis' in window) window.speechSynthesis.cancel(); }
-        function openOfficialPythonDocs() { window.open('https://docs.python.org/pt-br/3/', '_blank', 'noopener'); }
-
-        function addExtraDocs() {
-            const container = document.getElementById('docs-container');
-            extraDocs.forEach(([name, desc, code, category]) => {
-                const card = document.createElement('div'); card.className = 'doc-card bg-vscode-sidebar p-4 rounded-lg border border-vscode-border hover:border-vscode-blue transition';
-                const title = document.createElement('h3'); title.className = 'font-mono text-vscode-keyword text-base font-semibold mb-2'; title.textContent = name;
-                const tag = document.createElement('span'); tag.className = 'text-[10px] text-blue-300'; tag.textContent = category;
-                const p = document.createElement('p'); p.className = 'text-xs text-gray-300 mb-3'; p.textContent = desc;
-                const pre = document.createElement('pre'); pre.className = 'bg-vscode-terminal p-2 rounded text-xs text-green-300 font-mono mb-3 whitespace-pre-wrap'; pre.textContent = code;
-                const btn = document.createElement('button'); btn.className = 'text-xs text-vscode-accent hover:underline'; btn.textContent = 'Inserir no Editor'; btn.onclick = () => copyDocSnippet(code);
-                card.append(title, tag, p, pre, btn); container.appendChild(card);
             });
         }
         // Initialize App on Page Load
         window.onload = function() {
-            editorHasOpenFile = false;
-            document.getElementById('current-filename').innerText = 'Nenhum arquivo aberto';
-            document.getElementById('code-editor').value = '';
+            currentFile = 'main.py';
+            editorHasOpenFile = true;
+            openFiles.add('main.py');
+
+            document.getElementById('current-filename').innerText = currentFile;
+            document.getElementById('code-editor').value = virtualFiles[currentFile] || '';
             clearTerminal();
             updateLineNumbers();
             refreshFileExplorer();
