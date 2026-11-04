@@ -374,10 +374,43 @@ async def run_python(websocket: WebSocket) -> None:
                 })
                 return
 
-            process = await asyncio.create_subprocess_exec(
-                sys.executable,
-                "-u",
-                str(script_path),
+            runner_code = r'''
+import builtins
+import os
+import runpy
+import sys
+
+script_path = os.path.abspath(sys.argv[1])
+
+sys.argv = [script_path]
+sys.path.insert(0, os.path.dirname(script_path))
+
+def pycode_input(prompt=""):
+    if prompt:
+        sys.stdout.write(str(prompt))
+        sys.stdout.flush()
+
+    sys.stdout.write("\x1ePYCODE_STUDIO_INPUT\x1e")
+    sys.stdout.flush()
+
+    line = sys.stdin.readline()
+
+    if line == "":
+        raise EOFError
+
+    return line.rstrip("\r\n")
+
+builtins.input = pycode_input
+
+runpy.run_path(script_path, run_name="__main__")
+'''
+
+process = await asyncio.create_subprocess_exec(
+    sys.executable,
+    "-u",
+    "-c",
+    runner_code,
+    str(script_path),
                 cwd=str(workspace_dir),
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
@@ -400,7 +433,22 @@ async def run_python(websocket: WebSocket) -> None:
             })
 
             async def forward_output():
+                            input_marker = b"\x1ePYCODE_STUDIO_INPUT\x1e"
+
+            async def forward_output():
                 assert process.stdout is not None
+
+                pending = bytearray()
+
+                async def send_visible(data: bytes):
+                    if data:
+                        await websocket.send_json({
+                            "type": "output",
+                            "text": data.decode(
+                                "utf-8",
+                                errors="replace"
+                            )
+                        })
 
                 while True:
                     chunk = await process.stdout.read(4096)
@@ -408,14 +456,48 @@ async def run_python(websocket: WebSocket) -> None:
                     if not chunk:
                         break
 
-                    await websocket.send_json({
-                        "type": "output",
-                        "text": chunk.decode(
-                            "utf-8",
-                            errors="replace"
-                        )
-                    })
+                    pending.extend(chunk)
 
+                    while True:
+                        marker_position = pending.find(input_marker)
+
+                        if marker_position < 0:
+                            break
+
+                        await send_visible(
+                            bytes(pending[:marker_position])
+                        )
+
+                        await websocket.send_json({
+                            "type": "input_requested"
+                        })
+
+                        del pending[
+                            :marker_position + len(input_marker)
+                        ]
+
+                    keep_length = 0
+                    max_keep = min(
+                        len(pending),
+                        len(input_marker) - 1
+                    )
+
+                    for size in range(max_keep, 0, -1):
+                        if pending[-size:] == input_marker[:size]:
+                            keep_length = size
+                            break
+
+                    visible_length = len(pending) - keep_length
+
+                    if visible_length > 0:
+                        await send_visible(
+                            bytes(pending[:visible_length])
+                        )
+
+                        del pending[:visible_length]
+
+                await send_visible(bytes(pending))
+                
             async def receive_input():
                 assert process.stdin is not None
 
