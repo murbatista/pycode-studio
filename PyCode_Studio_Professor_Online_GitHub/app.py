@@ -314,6 +314,7 @@ def run_tests(_auth: None = Depends(require_login)) -> dict[str, Any]:
 
 
 
+
 @app.websocket("/ws/run")
 async def run_python(websocket: WebSocket) -> None:
     session = websocket.scope.get("session", {})
@@ -341,7 +342,8 @@ async def run_python(websocket: WebSocket) -> None:
 
     await websocket.accept()
 
-    process: asyncio.subprocess.Process | None = None
+    process = None
+    tasks = []
 
     try:
         request = await websocket.receive_json()
@@ -351,13 +353,12 @@ async def run_python(websocket: WebSocket) -> None:
                 "type": "error",
                 "text": "Mensagem inicial inválida."
             })
-            await websocket.close()
             return
 
         code = str(request.get("code", ""))
         filename = safe_filename(request.get("filename", "main.py"))
 
-        async 
+        async with RUN_LOCK:
 
             try:
                 script_path = write_project_files(
@@ -366,7 +367,6 @@ async def run_python(websocket: WebSocket) -> None:
                     code,
                     workspace_dir
                 )
-
             except (ValueError, OSError) as exc:
                 await websocket.send_json({
                     "type": "error",
@@ -374,159 +374,130 @@ async def run_python(websocket: WebSocket) -> None:
                 })
                 return
 
-            
-process = await asyncio.create_subprocess_exec(
-    sys.executable,
-    "-u",
-    str(script_path),
-    cwd=str(workspace_dir),
-    stdin=asyncio.subprocess.PIPE,
-    stdout=asyncio.subprocess.PIPE,
-    stderr=asyncio.subprocess.STDOUT,
-    env={
-        "PATH": os.getenv(
-            "PATH",
-            "/usr/local/bin:/usr/bin:/bin"
-        ),
-        "PYTHONIOENCODING": "utf-8",
-        "PYTHONUNBUFFERED": "1",
-        "HOME": str(workspace_dir),
-        "TMPDIR": str(workspace_dir),
-    },
-)
-
-await websocket.send_json({
-    "type": "started",
-    "python": sys.version.split()[0]
-})
-
-
-async def forward_output():
-    assert process is not None
-    assert process.stdout is not None
-
-    while True:
-        chunk = await process.stdout.read(4096)
-
-        if not chunk:
-            break
-
-        await websocket.send_json({
-            "type": "output",
-            "text": chunk.decode("utf-8", errors="replace")
-        })
-
-
-async def receive_input():
-    assert process is not None
-    assert process.stdin is not None
-
-    while True:
-        message = await websocket.receive_json()
-        kind = message.get("type")
-
-        if kind == "input":
-            text = str(message.get("text", ""))[:20_000]
-
-            # Cada mensagem representa uma linha enviada pelo usuário.
-            if not text.endswith(("\n", "\r")):
-                text += "\n"
-
-            process.stdin.write(
-                text.encode("utf-8", errors="replace")
+            process = await asyncio.create_subprocess_exec(
+                sys.executable,
+                "-u",
+                str(script_path),
+                cwd=str(workspace_dir),
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                env={
+                    "PATH": os.getenv(
+                        "PATH",
+                        "/usr/local/bin:/usr/bin:/bin"
+                    ),
+                    "PYTHONIOENCODING": "utf-8",
+                    "PYTHONUNBUFFERED": "1",
+                    "HOME": str(workspace_dir),
+                    "TMPDIR": str(workspace_dir),
+                },
             )
 
-            await process.stdin.drain()
+            await websocket.send_json({
+                "type": "started",
+                "python": sys.version.split()[0]
+            })
 
-        elif kind == "stop":
-            return
+            async def forward_output():
+                assert process.stdout is not None
 
+                while True:
+                    chunk = await process.stdout.read(4096)
 
-output_task = asyncio.create_task(forward_output())
-input_task = asyncio.create_task(receive_input())
-wait_task = asyncio.create_task(process.wait())
-timeout_task = asyncio.create_task(asyncio.sleep(120))
+                    if not chunk:
+                        break
 
-try:
-    done, pending = await asyncio.wait(
-        {input_task, wait_task, timeout_task},
-        return_when=asyncio.FIRST_COMPLETED
-    )
+                    await websocket.send_json({
+                        "type": "output",
+                        "text": chunk.decode(
+                            "utf-8",
+                            errors="replace"
+                        )
+                    })
 
-    # O tempo limite foi atingido.
-    if timeout_task in done and process.returncode is None:
-        process.terminate()
+            async def receive_input():
+                assert process.stdin is not None
 
-        try:
-            await asyncio.wait_for(wait_task, timeout=3)
-        except asyncio.TimeoutError:
-            process.kill()
-            await wait_task
+                while True:
+                    message = await websocket.receive_json()
+                    kind = message.get("type")
 
-        await websocket.send_json({
-            "type": "error",
-            "text": "Execução interrompida após 120 segundos."
-        })
+                    if kind == "input":
+                        text_input = str(
+                            message.get("text", "")
+                        )[:20_000]
 
-    # O usuário solicitou a interrupção ou a conexão foi encerrada.
-    elif input_task in done and process.returncode is None:
-        process.terminate()
+                        if not text_input.endswith(("\n", "\r")):
+                            text_input += "\n"
 
-        try:
-            await asyncio.wait_for(wait_task, timeout=3)
-        except asyncio.TimeoutError:
-            process.kill()
-            await wait_task
+                        process.stdin.write(
+                            text_input.encode(
+                                "utf-8",
+                                errors="replace"
+                            )
+                        )
 
-    # Aguarda a saída final do programa.
-    await output_task
+                        await process.stdin.drain()
 
-    if input_task in done:
-        input_error = input_task.exception()
-        if input_error:
-            raise input_error
+                    elif kind == "stop":
+                        return
 
-    await websocket.send_json({
-        "type": "exit",
-        "code": process.returncode
-    })
+            output_task = asyncio.create_task(forward_output())
+            input_task = asyncio.create_task(receive_input())
+            wait_task = asyncio.create_task(process.wait())
+            timeout_task = asyncio.create_task(asyncio.sleep(120))
 
-finally:
-    for task in (input_task, timeout_task):
-        if not task.done():
-            task.cancel()
+            tasks = [
+                output_task,
+                input_task,
+                wait_task,
+                timeout_task
+            ]
 
-    await asyncio.gather(
-        input_task,
-        timeout_task,
-        return_exceptions=True
-    )
+            done, pending = await asyncio.wait(
+                {input_task, wait_task, timeout_task},
+                return_when=asyncio.FIRST_COMPLETED
+            )
 
-    if process.returncode is None:
-        process.terminate()
+            if timeout_task in done and process.returncode is None:
+                process.terminate()
 
-        try:
-            await asyncio.wait_for(process.wait(), timeout=3)
-        except asyncio.TimeoutError:
-            process.kill()
-            await process.wait()
+                try:
+                    await asyncio.wait_for(wait_task, timeout=3)
+                except asyncio.TimeoutError:
+                    process.kill()
+                    await wait_task
 
-    if not output_task.done():
-        output_task.cancel()
+                await websocket.send_json({
+                    "type": "error",
+                    "text": "Execução interrompida após 120 segundos."
+                })
 
-    await asyncio.gather(
-        output_task,
-        return_exceptions=True
-    )
+            elif input_task in done and process.returncode is None:
+                process.terminate()
+
+                try:
+                    await asyncio.wait_for(wait_task, timeout=3)
+                except asyncio.TimeoutError:
+                    process.kill()
+                    await wait_task
+
+            await output_task
+
+            if input_task in done:
+                input_error = input_task.exception()
+
+                if input_error:
+                    raise input_error
+
+            await websocket.send_json({
+                "type": "exit",
+                "code": process.returncode
+            })
 
     except WebSocketDisconnect:
-        if process and process.returncode is None:
-            process.terminate()
-
-            try:
-                await asyncio.wait_for(process.wait(), timeout=3)
-            except asyncio.TimeoutError:
-                process.kill()
+        pass
 
     except Exception as exc:
         try:
@@ -540,9 +511,6 @@ finally:
         except Exception:
             pass
 
-        if process and process.returncode is None:
-            process.terminate()
-
     finally:
         if process and process.returncode is None:
             process.terminate()
@@ -551,11 +519,23 @@ finally:
                 await asyncio.wait_for(process.wait(), timeout=3)
             except asyncio.TimeoutError:
                 process.kill()
+                await process.wait()
+
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+
+        if tasks:
+            await asyncio.gather(
+                *tasks,
+                return_exceptions=True
+            )
 
         try:
             await websocket.close()
         except Exception:
             pass
+
 
 
 if __name__ == "__main__":
