@@ -66,6 +66,24 @@ def safe_filename(name: str) -> str:
         cleaned = (stem[:100] + dot + suffix[:12]) if dot else cleaned[:120]
     return cleaned
 
+def get_session_workspace(session: dict[str, Any]) -> Path:
+    workspace_id = session.get("workspace_id")
+
+    if not isinstance(workspace_id, str) or not re.fullmatch(
+        r"[A-Za-z0-9_-]{40,64}", workspace_id
+    ):
+        workspace_id = secrets.token_urlsafe(32)
+        session["workspace_id"] = workspace_id
+
+    root = WORKSPACE_ROOT.resolve()
+    workspace = (root / workspace_id).resolve()
+
+    if root not in workspace.parents:
+        raise ValueError("Pasta de projeto inválida.")
+
+    workspace.mkdir(parents=True, exist_ok=True)
+
+    return workspace
 
 def build_tutor_prompt(mode: str, question: str, code: str, error: str) -> str:
     mode_instructions = {
@@ -113,30 +131,44 @@ def build_tutor_prompt(mode: str, question: str, code: str, error: str) -> str:
 
     return "\n\n".join(parts)
 
-def write_project_files(files: Any, current_filename: str, current_code: str) -> Path:
+def write_project_files(
+    files: Any,
+    current_filename: str,
+    current_code: str,
+    workspace_dir: Path
+) -> Path:
+
     if not isinstance(files, dict):
         files = {}
+
     total = 0
-    written: set[str] = set()
+
     for raw_name, raw_content in files.items():
         if not isinstance(raw_content, str):
             continue
+
         name = safe_filename(str(raw_name))
         content = raw_content.encode("utf-8")
+
         if len(content) > MAX_FILE_BYTES:
             raise ValueError(f"O arquivo {name} excede o limite de 2 MB.")
+
         total += len(content)
+
         if total > MAX_PROJECT_BYTES:
             raise ValueError("O projeto excede o limite de 10 MB.")
-        (WORKSPACE_DIR / name).write_bytes(content)
-        written.add(name)
+
+        (workspace_dir / name).write_bytes(content)
+
     main_name = safe_filename(current_filename)
     code_bytes = current_code.encode("utf-8")
+
     if len(code_bytes) > MAX_FILE_BYTES:
         raise ValueError("O código atual excede o limite de 2 MB.")
-    (WORKSPACE_DIR / main_name).write_bytes(code_bytes)
-    return WORKSPACE_DIR / main_name
 
+    (workspace_dir / main_name).write_bytes(code_bytes)
+
+    return workspace_dir / main_name
 
 @app.get("/")
 def home() -> FileResponse:
@@ -155,6 +187,8 @@ def login(payload: LoginRequest, request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail="Senha incorreta. Tente novamente.")
     request.session.clear()
     request.session["authenticated"] = True
+    request.session["workspace_id"] = secrets.token_urlsafe(32)
+
     return {"ok": True}
 
 
@@ -279,76 +313,134 @@ def run_tests(_auth: None = Depends(require_login)) -> dict[str, Any]:
         return {"ok": False, "returncode": 124, "output": "Os testes excederam o limite de 40 segundos."}
 
 
+
 @app.websocket("/ws/run")
 async def run_python(websocket: WebSocket) -> None:
-    # Conexões remotas só podem usar o terminal após autenticação por cookie de sessão.
-    if not websocket.scope.get("session", {}).get("authenticated"):
-        await websocket.close(code=1008, reason="Faça login para usar o PyCode Studio.")
+    session = websocket.scope.get("session", {})
+
+    if not session.get("authenticated"):
+        await websocket.close(
+            code=1008,
+            reason="Faça login para usar o PyCode Studio."
+        )
         return
+
+    workspace_dir = get_session_workspace(session)
+
     origin = websocket.headers.get("origin", "")
     if origin:
         parsed_origin = urlsplit(origin)
         request_host = websocket.headers.get("host", "")
-        # Bloqueia origens externas diferentes do próprio site (proteção contra CSWSH).
+
         if parsed_origin.netloc != request_host:
-            await websocket.close(code=1008, reason="Origem não autorizada.")
+            await websocket.close(
+                code=1008,
+                reason="Origem não autorizada."
+            )
             return
+
     await websocket.accept()
+
     process: asyncio.subprocess.Process | None = None
+
     try:
         request = await websocket.receive_json()
+
         if request.get("type") != "run":
-            await websocket.send_json({"type": "error", "text": "Mensagem inicial inválida."})
-            await websocket.close()
-            return
-        code = str(request.get("code", ""))
-        filename = safe_filename(request.get("filename", "main.py"))
-        try:
-            script_path = write_project_files(request.get("files", {}), filename, code)
-        except (ValueError, OSError) as exc:
-            await websocket.send_json({"type": "error", "text": str(exc)})
+            await websocket.send_json({
+                "type": "error",
+                "text": "Mensagem inicial inválida."
+            })
             await websocket.close()
             return
 
+        code = str(request.get("code", ""))
+        filename = safe_filename(request.get("filename", "main.py"))
+
         async with RUN_LOCK:
+
+            try:
+                script_path = write_project_files(
+                    request.get("files", {}),
+                    filename,
+                    code,
+                    workspace_dir
+                )
+
+            except (ValueError, OSError) as exc:
+                await websocket.send_json({
+                    "type": "error",
+                    "text": str(exc)
+                })
+                return
+
             process = await asyncio.create_subprocess_exec(
                 sys.executable,
                 "-u",
                 str(script_path),
-                cwd=str(WORKSPACE_DIR),
+                cwd=str(workspace_dir),
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
-                # Não repassa chaves de API/segredos do servidor ao programa executado.
                 env={
-                    "PATH": os.getenv("PATH", "/usr/local/bin:/usr/bin:/bin"),
+                    "PATH": os.getenv(
+                        "PATH",
+                        "/usr/local/bin:/usr/bin:/bin"
+                    ),
                     "PYTHONIOENCODING": "utf-8",
                     "PYTHONUNBUFFERED": "1",
-                    "HOME": str(WORKSPACE_DIR),
-                    "TMPDIR": str(WORKSPACE_DIR),
+                    "HOME": str(workspace_dir),
+                    "TMPDIR": str(workspace_dir),
                 },
             )
-            await websocket.send_json({"type": "started", "python": sys.version.split()[0]})
+
+            await websocket.send_json({
+                "type": "started",
+                "python": sys.version.split()[0]
+            })
 
             async def forward_output() -> None:
-                assert process is not None and process.stdout is not None
+                assert process is not None
+                assert process.stdout is not None
+
                 while True:
                     chunk = await process.stdout.read(1024)
+
                     if not chunk:
                         break
-                    await websocket.send_json({"type": "output", "text": chunk.decode("utf-8", errors="replace")})
+
+                    await websocket.send_json({
+                        "type": "output",
+                        "text": chunk.decode(
+                            "utf-8",
+                            errors="replace"
+                        )
+                    })
+
                 return_code = await process.wait()
-                await websocket.send_json({"type": "exit", "code": return_code})
+
+                await websocket.send_json({
+                    "type": "exit",
+                    "code": return_code
+                })
 
             async def receive_input() -> None:
-                assert process is not None and process.stdin is not None
+                assert process is not None
+                assert process.stdin is not None
+
                 while True:
                     message = await websocket.receive_json()
                     kind = message.get("type")
+
                     if kind == "input":
                         text = str(message.get("text", ""))[:20_000]
-                        process.stdin.write(text.encode("utf-8", errors="replace"))
+
+                        process.stdin.write(
+                            text.encode("utf-8", errors="replace")
+                        )
+
                         await process.stdin.drain()
+
                     elif kind == "stop":
                         if process.returncode is None:
                             process.terminate()
@@ -357,45 +449,84 @@ async def run_python(websocket: WebSocket) -> None:
             output_task = asyncio.create_task(forward_output())
             input_task = asyncio.create_task(receive_input())
             timeout_task = asyncio.create_task(asyncio.sleep(120))
-            done, pending = await asyncio.wait({output_task, input_task, timeout_task}, return_when=asyncio.FIRST_COMPLETED)
+
+            done, pending = await asyncio.wait(
+                {output_task, input_task, timeout_task},
+                return_when=asyncio.FIRST_COMPLETED
+            )
+
             if timeout_task in done:
                 if process.returncode is None:
                     process.terminate()
+
                     try:
-                        await asyncio.wait_for(process.wait(), timeout=3)
+                        await asyncio.wait_for(
+                            process.wait(),
+                            timeout=3
+                        )
                     except asyncio.TimeoutError:
                         process.kill()
-                await websocket.send_json({"type": "error", "text": "Execução interrompida após 120 segundos para evitar que um programa fique preso."})
+
+                await websocket.send_json({
+                    "type": "error",
+                    "text": (
+                        "Execução interrompida após 120 segundos "
+                        "para evitar que um programa fique preso."
+                    )
+                })
+
             elif input_task in done and output_task not in done:
                 if process.returncode is None:
                     process.terminate()
+
             for task in pending:
                 task.cancel()
-            await asyncio.gather(*pending, return_exceptions=True)
+
+            await asyncio.gather(
+                *pending,
+                return_exceptions=True
+            )
+
             for task in done:
-                if task is not timeout_task and task.exception():
-                    raise task.exception()  # type: ignore[misc]
+                if not task.cancelled() and task is not timeout_task:
+                    error = task.exception()
+
+                    if error:
+                        raise error
+
     except WebSocketDisconnect:
         if process and process.returncode is None:
             process.terminate()
+
             try:
                 await asyncio.wait_for(process.wait(), timeout=3)
             except asyncio.TimeoutError:
                 process.kill()
+
     except Exception as exc:
         try:
-            await websocket.send_json({"type": "error", "text": f"Falha ao executar o Python: {type(exc).__name__}: {exc}"})
+            await websocket.send_json({
+                "type": "error",
+                "text": (
+                    f"Falha ao executar o Python: "
+                    f"{type(exc).__name__}: {exc}"
+                )
+            })
         except Exception:
             pass
+
         if process and process.returncode is None:
             process.terminate()
+
     finally:
         if process and process.returncode is None:
             process.terminate()
+
             try:
                 await asyncio.wait_for(process.wait(), timeout=3)
             except asyncio.TimeoutError:
                 process.kill()
+
         try:
             await websocket.close()
         except Exception:
