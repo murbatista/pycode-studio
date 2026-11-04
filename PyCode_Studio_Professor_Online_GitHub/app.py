@@ -528,7 +528,7 @@ runpy.run_path(script_path, run_name="__main__")
             output_task = asyncio.create_task(forward_output())
             input_task = asyncio.create_task(receive_input())
             wait_task = asyncio.create_task(process.wait())
-            timeout_task = asyncio.create_task(asyncio.sleep(120))
+            timeout_task = asyncio.create_task(asyncio.sleep(5))
 
             tasks = [
                 output_task,
