@@ -1,6 +1,6 @@
-Flask
-gunicorn
-uvicorn
-python-dotenv
+
 fastapi
+uvicorn[standard]
+python-dotenv
+itsdangerous
 google-genai
