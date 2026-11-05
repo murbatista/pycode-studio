@@ -13,7 +13,7 @@ services:
         generateValue: true
       - key: PYCODE_HTTPS_ONLY
         value: "true"
-      - key: OPENAI_API_KEY
+      - key: GEMINI_API_KEY
         sync: false
-      - key: OPENAI_MODEL
-        value: gpt-5.5
+      - key: GEMINI_MODEL
+        value: gemini-3.8-flash
