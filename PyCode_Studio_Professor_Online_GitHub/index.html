@@ -2481,6 +2481,10 @@ function removeCurrentFile() {
         throw new Error(data.detail || 'Não foi possível entrar.');
       }
 
+      // Um novo login cria um workspace novo no servidor; não restaura arquivos do login anterior.
+      try { sessionStorage.removeItem('pycode-studio-session-files-v3'); } catch (_) {}
+      if (typeof resetProjectToDefaults === 'function') resetProjectToDefaults();
+      if (typeof persistVirtualFilesNow === 'function') persistVirtualFilesNow();
       screen.style.display = 'none';
       password.value = '';
     } catch (error) {
