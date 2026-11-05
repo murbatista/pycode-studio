@@ -823,6 +823,7 @@ print(x // y)</pre>
             if (persistTimer) clearTimeout(persistTimer);
             persistTimer = setTimeout(() => { persistTimer = null; persistVirtualFilesNow(); }, 350);
         }
+        window.addEventListener('beforeunload', persistVirtualFilesNow);
         function resetProjectToDefaults() {
             monacoModels.forEach(model => model.dispose());
             monacoModels.clear();
