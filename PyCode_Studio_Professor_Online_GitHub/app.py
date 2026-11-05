@@ -7,6 +7,7 @@ import secrets
 import os
 import subprocess
 import sys
+import shutil
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -22,6 +23,16 @@ load_dotenv(BASE_DIR / ".env")
 INDEX_FILE = BASE_DIR / "index.html"
 WORKSPACE_ROOT = Path(os.getenv("PYCODE_DATA_DIR", str(BASE_DIR / "workspace" / "users"))).expanduser()
 WORKSPACE_ROOT.mkdir(parents=True, exist_ok=True)
+
+# Cada inicialização recebe um identificador novo. O frontend usa isso para
+# descartar arquivos da sessão anterior quando o serviço reinicia.
+INSTANCE_ID = secrets.token_urlsafe(18)
+
+# O workspace é temporário por decisão do projeto: nenhuma pasta de sessão
+# sobrevive a uma reinicialização do processo, mesmo se houver disco persistente.
+for old_workspace in WORKSPACE_ROOT.iterdir():
+    if old_workspace.is_dir() and not old_workspace.is_symlink():
+        shutil.rmtree(old_workspace, ignore_errors=True)
 
 app = FastAPI(title="PyCode Studio", version="2.1.0")
 # A senha e a chave de sessão devem ser configuradas como variáveis de ambiente no Render.
@@ -256,6 +267,7 @@ def health() -> dict[str, Any]:
         "pythonVersion": sys.version.split()[0],
         "aiConfigured": bool(os.getenv("GEMINI_API_KEY", "").strip()),
         "model": os.getenv("GEMINI_MODEL", "gemini-3.8-flash"),
+        "bootId": INSTANCE_ID,
     }
 
 
@@ -327,73 +339,51 @@ async def tutor(payload: TutorRequest, _auth: None = Depends(require_login)) -> 
 
         return answer
 
-    # Até 3 tentativas para falhas temporárias.
-    for attempt in range(3):
+    # Uma única chamada evita prender o serviço gratuito em várias esperas.
+    try:
+        answer = await asyncio.to_thread(call_model)
+        return {"answer": answer}
+    except Exception as exc:
+        status_code = getattr(exc, "code", None)
+        if status_code is None:
+            status_code = getattr(exc, "status_code", None)
         try:
-            answer = await asyncio.to_thread(call_model)
-            return {"answer": answer}
+            status_code = int(status_code)
+        except (TypeError, ValueError):
+            status_code = None
 
-        except Exception as exc:
-            status_code = getattr(exc, "code", None)
+        print(
+            f"Erro na API Gemini: {type(exc).__name__}: {exc}",
+            flush=True
+        )
 
-            if status_code is None:
-                status_code = getattr(exc, "status_code", None)
-
-            try:
-                status_code = int(status_code)
-            except (TypeError, ValueError):
-                status_code = None
-
-            retryable = (
-                status_code in {429, 500, 502, 503, 504}
-                or type(exc).__name__ == "ServerError"
+        if status_code == 503 or type(exc).__name__ == "ServerError":
+            detail = (
+                "O Gemini está temporariamente sobrecarregado. "
+                "Aguarde alguns instantes e tente novamente. "
+                "Isso não significa que sua chave esteja incorreta."
             )
-
-            print(
-                f"Erro na API Gemini: {type(exc).__name__}: {exc} "
-                f"| Tentativa {attempt + 1}/3",
-                flush=True
+            http_status = 503
+        elif status_code == 429:
+            detail = (
+                "O limite gratuito de solicitações do Gemini foi atingido. "
+                "Aguarde a renovação do limite antes de tentar novamente."
             )
+            http_status = 429
+        elif status_code in {401, 403}:
+            detail = (
+                "O Gemini recusou a autenticação. Confira a variável "
+                "GEMINI_API_KEY nas configurações do Render."
+            )
+            http_status = 502
+        else:
+            detail = (
+                "Não foi possível obter uma resposta do Gemini. "
+                f"Tipo do erro: {type(exc).__name__}."
+            )
+            http_status = 502
 
-            if retryable and attempt < 2:
-                # Espera 2 segundos e depois 4 segundos.
-                await asyncio.sleep(2 ** (attempt + 1))
-                continue
-
-            if status_code == 503 or type(exc).__name__ == "ServerError":
-                detail = (
-                    "O Gemini está temporariamente sobrecarregado. "
-                    "As tentativas automáticas não conseguiram obter resposta. "
-                    "Aguarde um pouco e tente novamente."
-                )
-                http_status = 503
-
-            elif status_code == 429:
-                detail = (
-                    "O limite de solicitações do Gemini foi atingido. "
-                    "Aguarde antes de tentar novamente."
-                )
-                http_status = 429
-
-            else:
-                detail = (
-                    "Não foi possível obter uma resposta do Gemini. "
-                    f"Erro: {type(exc).__name__}."
-                )
-                http_status = 502
-
-            raise HTTPException(
-                status_code=http_status,
-                detail=detail
-            ) from exc
-
-    raise HTTPException(
-        status_code=503,
-        detail="O Gemini está temporariamente indisponível."
-    )
-
-
-
+        raise HTTPException(status_code=http_status, detail=detail) from exc
 
 
 @app.post("/api/tests")
