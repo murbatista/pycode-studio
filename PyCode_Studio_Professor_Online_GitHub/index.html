@@ -881,7 +881,8 @@ print(x // y)</pre>
     editorHasOpenFile = true;
     openFiles.add(filename);
 
-    document.getElementById('current-filename').innerText = filename;
+    const filenameLabel = document.getElementById('current-filename');
+    if (filenameLabel) filenameLabel.innerText = filename;
 
     if (monacoEditor) {
         let model = monacoModels.get(filename);
@@ -981,7 +982,8 @@ print(x // y)</pre>
         } else {
             currentFile = '';
             editorHasOpenFile = false;
-            document.getElementById('current-filename').innerText = 'Nenhum arquivo aberto';
+            const filenameLabel = document.getElementById('current-filename');
+            if (filenameLabel) filenameLabel.innerText = 'Nenhum arquivo aberto';
             setEditorValue('');
         }
     }
@@ -2314,7 +2316,8 @@ function removeCurrentFile() {
             editorHasOpenFile = true;
             openFiles.add(currentFile);
 
-            document.getElementById('current-filename').innerText = currentFile;
+            const filenameLabel = document.getElementById('current-filename');
+            if (filenameLabel) filenameLabel.innerText = currentFile;
             document.getElementById('code-editor').value = virtualFiles[currentFile] || '';
             clearTerminal();
             updateLineNumbers();
