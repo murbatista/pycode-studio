@@ -18,16 +18,15 @@ from starlette.middleware.sessions import SessionMiddleware
 from pydantic import BaseModel, Field
 
 BASE_DIR = Path(__file__).resolve().parent
-INDEX_FILE = BASE_DIR / "index.html"
-WORKSPACE_ROOT = BASE_DIR / "workspace" / "users"
-WORKSPACE_ROOT.mkdir(parents=True, exist_ok=True)
 load_dotenv(BASE_DIR / ".env")
+INDEX_FILE = BASE_DIR / "index.html"
+WORKSPACE_ROOT = Path(os.getenv("PYCODE_DATA_DIR", str(BASE_DIR / "workspace" / "users"))).expanduser()
+WORKSPACE_ROOT.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="PyCode Studio", version="2.1.0")
 # A senha e a chave de sessão devem ser configuradas como variáveis de ambiente no Render.
 # Valores de desenvolvimento permitem rodar localmente, mas não devem ser usados em produção.
 SESSION_SECRET = os.getenv("PYCODE_SESSION_SECRET", "local-dev-secret-change-before-deploy")
-ACCESS_PASSWORD = os.getenv("PYCODE_ACCESS_PASSWORD", "")
 app.add_middleware(
     SessionMiddleware,
     secret_key=SESSION_SECRET,
@@ -35,7 +34,15 @@ app.add_middleware(
     https_only=os.getenv("PYCODE_HTTPS_ONLY", "false").lower() == "true",
     max_age=60 * 60 * 12,
 )
-RUN_LOCK = asyncio.Lock()
+WORKSPACE_LOCKS: dict[str, asyncio.Lock] = {}
+
+def get_workspace_lock(workspace_id: str) -> asyncio.Lock:
+    """Evita concorrência no mesmo projeto sem bloquear outros usuários."""
+    lock = WORKSPACE_LOCKS.get(workspace_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        WORKSPACE_LOCKS[workspace_id] = lock
+    return lock
 MAX_FILE_BYTES = 2_000_000
 MAX_PROJECT_BYTES = 10_000_000
 
@@ -57,36 +64,30 @@ class TutorRequest(BaseModel):
 
 
 def safe_filename(name: str) -> str:
-    """Valida um caminho relativo dentro do projeto."""
+    """Converte um caminho informado em um caminho relativo seguro do projeto."""
     cleaned = str(name or "main.py").replace("\\", "/").strip()
+    if re.match(r"^[A-Za-z]:/", cleaned) or cleaned.startswith("/"):
+        cleaned = cleaned.rsplit("/", 1)[-1]
+    raw_parts = cleaned.split("/")
 
-    parts = cleaned.split("/")
-
-    if not parts or len(parts) > 10:
+    if len(raw_parts) > 10:
         raise ValueError("Caminho de arquivo inválido.")
 
+    # Remove segmentos de navegação e mantém o destino dentro do projeto.
+    parts = [part.strip() for part in raw_parts if part.strip() not in {"", ".", ".."}]
+    if not parts:
+        return "main.py"
+
     safe_parts = []
-
     for part in parts:
-        part = part.strip()
-
+        part = "".join(ch for ch in part if ch.isalnum() or ch in "._- ")
         if not part or part in {".", ".."}:
-            raise ValueError("Caminho de arquivo inválido.")
-
-        part = "".join(
-            ch for ch in part
-            if ch.isalnum() or ch in "._- "
-        )
-
-        if not part or part in {".", ".."}:
-            raise ValueError("Nome de arquivo inválido.")
-
+            continue
         if len(part) > 120:
             raise ValueError("Nome de arquivo muito longo.")
-
         safe_parts.append(part)
 
-    return "/".join(safe_parts)
+    return "/".join(safe_parts) if safe_parts else "main.py"
 
 def get_session_workspace(session: dict[str, Any]) -> Path:
     workspace_id = session.get("workspace_id")
@@ -404,7 +405,9 @@ async def run_python(websocket: WebSocket) -> None:
         code = str(request.get("code", ""))
         filename = safe_filename(request.get("filename", "main.py"))
 
-        async with RUN_LOCK:
+        workspace_id = str(session.get("workspace_id", ""))
+        workspace_lock = get_workspace_lock(workspace_id)
+        async with workspace_lock:
 
             try:
                 script_path = write_project_files(
