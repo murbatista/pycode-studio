@@ -1,56 +1,56 @@
-# PyCode Studio — aplicativo local
+# PyCode Studio — versão online (Render)
 
-Esta versão usa a interface existente do PyCode Studio, mas adiciona um backend Python local para que o código seja executado pelo Python instalado no computador, em vez de depender apenas do interpretador limitado do navegador.
+O PyCode Studio é acessado diretamente pelo endereço HTTPS do serviço no Render. **Não é necessário executar `iniciar.bat`, instalar Python ou abrir uma janela desktop.**
 
-## Requisitos
+## Publicação no Render
 
-- Windows 10/11 recomendado (também é possível iniciar manualmente em outros sistemas).
-- Python 3.10 ou superior instalado e disponível como `py -3` ou `python`.
-- Internet para instalar as dependências e carregar os recursos visuais externos do editor. O interpretador local funciona sem mandar o código para um serviço remoto.
+1. Envie os arquivos e a pasta `tests/` deste projeto para a raiz do repositório GitHub.
+2. No Render, escolha **New → Blueprint** e selecione o repositório que contém `render.yaml`.
+3. Confirme a criação do serviço `pycode-studio` e aguarde o estado `Live`.
+4. No serviço, abra **Environment** e configure `GEMINI_API_KEY` com a chave criada no Google AI Studio. Não coloque essa chave no HTML nem no GitHub.
+5. Confira `GEMINI_MODEL`. O padrão deste projeto é `gemini-3.8-flash`.
+6. Confira `PYCODE_ACCESS_PASSWORD`. O Blueprint gera uma senha; você pode definir uma senha própria e compartilhá-la apenas com quem deve acessar o editor.
+7. Abra a URL HTTPS `https://...onrender.com`. O acesso é feito pelo navegador.
 
-## Início rápido no Windows
+O `render.yaml` configura automaticamente `PYCODE_SESSION_SECRET` e `PYCODE_HTTPS_ONLY`.
 
-Nesta versão adaptada, a senha local padrão é `pycode-local`. Para uso na internet, configure uma senha longa pela variável `PYCODE_ACCESS_PASSWORD` no Render.
+## Recursos da versão online
 
-1. Extraia toda a pasta do ZIP para um local em que você tenha permissão de gravação.
-2. Dê dois cliques em `iniciar.bat`.
-3. Na primeira execução, o programa cria um ambiente Python isolado e instala as dependências.
-4. O PyCode Studio abrirá em `http://127.0.0.1:8765`. Mantenha a janela preta aberta enquanto usa o aplicativo.
+- Editor Monaco no navegador.
+- Execução Python no servidor do PyCode Studio, com terminal e suporte a `input()`.
+- Verificação de sintaxe Python pelo backend.
+- Tutor IA usando Gemini, com explicação, depuração e perguntas.
+- Criação de arquivos e pastas com caminhos como `funcoes/calculos.py`.
+- Abas de arquivos e árvore de pastas expansível.
+- Baixar o arquivo atual, importar arquivos de texto/código e exportar/importar o projeto completo em JSON.
+- Cópia local de segurança do projeto no armazenamento do navegador, com gravação com atraso para evitar salvar todo o projeto a cada tecla.
 
-### Janela de aplicativo desktop (opcional)
+## Como salvar e transportar projetos
 
-Execute `iniciar_desktop.bat`. Isso instala `pywebview` e tenta abrir uma janela própria. Se a janela nativa não funcionar no seu Windows, use `iniciar.bat`, que abre a versão local no navegador.
+- **Baixar arquivo atual:** baixa o arquivo selecionado para o computador.
+- **Exportar projeto completo:** baixa um JSON com todos os arquivos e caminhos de pastas.
+- **Importar projeto:** selecione um JSON exportado pelo PyCode Studio para restaurar o conjunto de arquivos.
+- O navegador também mantém uma cópia do projeto em `localStorage`. Essa cópia pertence àquele navegador e àquele dispositivo.
 
-## O que foi adicionado
+### Atenção ao armazenamento no Render
 
-- Execução pelo Python real instalado no computador, com imports dos pacotes instalados nesse ambiente.
-- Terminal com entrada interativa para `input()`: digite no campo de entrada e pressione Enter/Enviar.
-- Arquivos virtuais do projeto são gravados no diretório `workspace/project` antes da execução; arquivos criados pelo código permanecem nessa pasta.
-- Verificação de sintaxe sem executar o programa.
-- Testes automatizados do backend, acessíveis pelo botão **Testes** no editor ou por `python -m unittest discover -s tests -v`.
-- Tutor de IA para explicação linha a linha, depuração e perguntas.
-- Execução por voz com terminal próprio e entrada para `input()`.
-- Endpoints locais acessíveis somente pelo endereço de loopback configurado no iniciador.
+Este Blueprint usa o plano gratuito do Render. O sistema de arquivos do serviço é temporário: arquivos escritos pelo backend podem desaparecer quando o serviço reinicia, entra em suspensão ou recebe um novo deploy. Por isso, os projetos de trabalho ficam guardados no navegador e devem ser exportados em JSON como backup.
 
-## Ativar o Tutor de IA
+A cópia do navegador não sincroniza automaticamente entre computadores. Para ter um projeto centralizado e persistente, compartilhado entre seu computador e o do professor, será necessário adicionar um banco de dados ou armazenamento persistente compatível com o plano do serviço. Não considere a pasta temporária do servidor como backup.
 
-O tutor fica desativado até que uma chave válida seja configurada. Abra `.env` (criado na primeira inicialização) e preencha `OPENAI_API_KEY` com uma chave fornecida pelo responsável/administrador da conta. O modelo padrão é `gpt-5.5`; ele pode ser alterado por `OPENAI_MODEL` se a conta não tiver acesso a esse modelo.
+## Segurança
 
-**Privacidade e custos:** quando você clica em um botão do tutor, a pergunta e, se a caixa estiver marcada, o código e o último erro são enviados ao provedor de IA para gerar a resposta. A API pode gerar custos conforme a conta e o uso. Nunca coloque a chave de API no HTML, no GitHub ou em capturas de tela. Sem chave, a IDE e o Python local continuam funcionando.
+- A chave `GEMINI_API_KEY` fica somente nas variáveis de ambiente do servidor e não é enviada ao processo que executa os programas Python.
+- O acesso às rotas de execução, testes e tutor exige login.
+- O backend limita o tamanho dos arquivos e do projeto e encerra execuções após 120 segundos.
+- **Importante:** executar código Python enviado pelo navegador não é uma sandbox de segurança. O código executado tem permissões do processo do servidor. Mantenha o acesso restrito a pessoas de confiança; não publique a IDE para execução pública ou irrestrita.
 
-## Arquivos
+## Arquivos do repositório
 
-- `index.html` — interface.
-- `app.py` — servidor local, execução Python, tutor e verificações.
-- `desktop.py` — inicializador opcional da janela desktop.
-- `workspace/project/` — arquivos de trabalho e arquivos gerados pelos programas.
-- `tests/` — testes automatizados do backend.
-- `.env.example` — modelo de configuração, sem segredo.
+- `app.py` — servidor FastAPI, autenticação, execução Python e integração Gemini.
+- `index.html` — interface web.
+- `requirements.txt` — dependências do serviço.
+- `render.yaml` — configuração de publicação no Render.
+- `tests/test_backend.py` — testes automatizados do backend.
 
-## Limites honestos
-
-- O editor Monaco e alguns estilos são carregados de CDNs, portanto a primeira abertura precisa de internet para esses recursos.
-- Os pacotes Python que podem ser importados são os instalados no Python selecionado para executar `app.py`. Para instalar um pacote, use o mesmo Python/ambiente virtual da aplicação.
-- O código executado tem as permissões do usuário atual do computador. Execute apenas código que você entende ou confia; o backend local não é um ambiente de sandbox seguro para executar código desconhecido.
-- O tutor de IA é opcional e exige acesso à API. Não existe uma IA ilimitada ou gratuita embutida no programa.
-- Esta é uma versão de desenvolvimento testada por verificações automatizadas e de sintaxe, não uma garantia de ausência de todos os bugs em qualquer computador.
+A versão online não depende de `desktop.py`, `requirements-desktop.txt`, `iniciar.bat` ou `iniciar_desktop.bat`.
