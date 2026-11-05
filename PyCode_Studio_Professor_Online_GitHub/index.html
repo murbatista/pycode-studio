@@ -1174,7 +1174,7 @@ document.getElementById('line-numbers').classList.add('hidden');
                         const data = await response.json();
                         backendAvailable = Boolean(data.ok);
                         const ai = document.getElementById('ai-status');
-                        if (ai) ai.innerText = data.aiConfigured ? 'Gemini conectado' : 'Gemini não configurado no Render';
+                        if (ai) ai.innerText = data.aiConfigured ? 'Chave Gemini configurada (disponibilidade externa)' : 'Gemini não configurado no Render';
                         const status = document.querySelector('header .bg-vscode-activity');
                         if (status) status.innerHTML = '<span class="w-2 h-2 rounded-full bg-green-500"></span> Python conectado: ' + String(data.pythonVersion || 'online').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
                         return backendAvailable;
