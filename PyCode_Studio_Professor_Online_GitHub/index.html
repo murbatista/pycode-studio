@@ -824,7 +824,7 @@ print(x // y)</pre>
             persistTimer = setTimeout(() => { persistTimer = null; persistVirtualFilesNow(); }, 350);
         }
         function resetProjectToDefaults() {
-            Object.keys(monacoModels).forEach(name => monacoModels.get(name)?.dispose());
+            monacoModels.forEach(model => model.dispose());
             monacoModels.clear();
             Object.keys(virtualFiles).forEach(name => delete virtualFiles[name]);
             Object.assign(virtualFiles, {
@@ -832,7 +832,22 @@ print(x // y)</pre>
                 'exemplos.py': '# Exemplos de Estruturas Python\\n\\ndef calcular_media(notas):\\n    return sum(notas) / len(notas)\\n\\nlista_notas = [8.5, 9.0, 7.5]\\nprint("Média:", calcular_media(lista_notas))',
                 'exercicios.py': '# Exercício: Verificador de número par\\nnumero = 10\\nif numero % 2 == 0:\\n    print(f"{numero} é PAR")\\nelse:\\n    print(f"{numero} é ÍMPAR")'
             });
-            currentFile = 'main.py'; openFiles.clear(); editorHasOpenFile = false;
+            currentFile = 'main.py';
+            openFiles.clear();
+            openFiles.add(currentFile);
+            editorHasOpenFile = true;
+            if (monacoEditor && typeof monaco !== 'undefined') {
+                const model = monaco.editor.createModel(virtualFiles[currentFile], 'python');
+                monacoModels.set(currentFile, model);
+                monacoEditor.setModel(model);
+            } else {
+                const fallback = document.getElementById('code-editor');
+                if (fallback) fallback.value = virtualFiles[currentFile];
+            }
+            const filenameLabel = document.getElementById('current-filename');
+            if (filenameLabel) filenameLabel.innerText = currentFile;
+            if (typeof refreshFileExplorer === 'function') refreshFileExplorer();
+            if (typeof renderFileTabs === 'function') renderFileTabs();
         }
         async function initializeSessionFiles() {
             try {
