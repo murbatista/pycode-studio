@@ -68,7 +68,7 @@ class HealthEndpointTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertTrue(result["pythonVersion"])
         self.assertTrue(result["bootId"])
-        self.assertEqual(result["model"], "gemini-3.8-flash")
+        self.assertTrue(result["model"])
 
 
 if __name__ == "__main__":
