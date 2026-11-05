@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from app import build_tutor_prompt, get_workspace_lock, safe_filename, write_project_files
+from app import build_tutor_prompt, get_workspace_lock, health, safe_filename, write_project_files
 
 
 class SafeFilenameTests(unittest.TestCase):
@@ -60,6 +60,15 @@ class TutorPromptTests(unittest.TestCase):
     def test_unknown_mode_falls_back_to_question(self):
         prompt = build_tutor_prompt("other", "O que é len?", "", "")
         self.assertIn("O que é len?", prompt)
+
+
+class HealthEndpointTests(unittest.TestCase):
+    def test_health_reports_server_instance_id(self):
+        result = health()
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["pythonVersion"])
+        self.assertTrue(result["bootId"])
+        self.assertEqual(result["model"], "gemini-3.8-flash")
 
 
 if __name__ == "__main__":
