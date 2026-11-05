@@ -800,6 +800,8 @@ print(x // y)</pre>
             'exercicios.py': '# Exercício: Verificador de número par\nnumero = 10\nif numero % 2 == 0:\n    print(f"{numero} é PAR")\nelse:\n    print(f"{numero} é ÍMPAR")'
         };
         let currentFile = 'main.py';
+        const openFiles = new Set();
+        const monacoModels = new Map();
         let editorHasOpenFile = false;
         const PROJECT_STORAGE_KEY = 'pycode-studio-files-v2';
         function persistVirtualFiles() {
@@ -818,16 +820,6 @@ print(x // y)</pre>
             } catch (_) { /* Ignora dados locais inválidos e usa o projeto inicial. */ }
         }
        restoreVirtualFiles();
-
-// Ao reiniciar a plataforma, manter somente o main.py.
-Object.keys(virtualFiles).forEach(nome => {
-    if (nome !== 'main.py') {
-        delete virtualFiles[nome];
-    }
-});
-
-currentFile = 'main.py';
-persistVirtualFiles();
 
         // Tab Switching
         function setActiveTab(tabId) {
@@ -2195,8 +2187,6 @@ function removeCurrentFile() {
 
     showNotification('Arquivo removido do projeto.');
 }
-            });
-        }
         // Initialize App on Page Load
         window.onload = function() {
             currentFile = 'main.py';
