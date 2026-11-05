@@ -306,6 +306,7 @@ html[data-theme="light"] .tab-content [class~="text-gray-300"] {
                 <span class="tracking-wide">PyCode Studio IDE</span>
             </div>
             <div class="hidden md:flex space-x-3 text-gray-400">
+                <button onclick="toggleFileMenu()" class="hover:text-white transition">Arquivos</button>
                 <button onclick="setActiveTab('editor')" class="hover:text-white transition">Editar</button>
                 <button onclick="setActiveTab('docs')" class="hover:text-white transition">Documentação</button>
                 <button onclick="setActiveTab('ia')" class="hover:text-white transition">IA</button>
@@ -317,7 +318,7 @@ html[data-theme="light"] .tab-content [class~="text-gray-300"] {
         
 <div class="flex items-center space-x-3 text-gray-400">
     <span class="bg-vscode-activity px-2.5 py-0.5 rounded text-[11px] text-green-400 border border-green-800 flex items-center gap-1.5">
-        <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Simulador Python
+        <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Python no servidor
     </span>
 
     <button
@@ -338,10 +339,10 @@ html[data-theme="light"] .tab-content [class~="text-gray-300"] {
 
     <div id="file-menu" class="hidden absolute top-9 left-40 z-50 bg-vscode-sidebar border border-vscode-border shadow-xl rounded p-2 text-xs space-y-1">
         <button onclick="newUserFile()" class="block w-full text-left px-3 py-2 hover:bg-vscode-activity">Novo arquivo Python</button>
-        <button onclick="saveCurrentFile()" class="block w-full text-left px-3 py-2 hover:bg-vscode-activity">Salvar arquivo / Salvar como…</button>
+        <button onclick="saveCurrentFile()" class="block w-full text-left px-3 py-2 hover:bg-vscode-activity">Baixar arquivo atual</button>
         <button onclick="exportProject()" class="block w-full text-left px-3 py-2 hover:bg-vscode-activity">Exportar projeto completo (.json)</button>
-        <button onclick="document.getElementById('import-file-input').click()" class="block w-full text-left px-3 py-2 hover:bg-vscode-activity">Abrir/importar arquivo…</button>
-        <input id="import-file-input" type="file" class="hidden" onchange="importUserFile(event)">
+        <button onclick="document.getElementById('import-file-input').click()" class="block w-full text-left px-3 py-2 hover:bg-vscode-activity">Importar arquivo ou projeto (.json)…</button>
+        <input id="import-file-input" type="file" accept=".py,.txt,.md,.json,.html,.js,.css,.sql,.csv,.yaml,.yml,.toml" class="hidden" onchange="importUserFile(event)">
     </div>
 
     <!-- App Body Layout -->
@@ -461,7 +462,7 @@ print("Pronto para codificar!")</textarea>
                                 </div>
                                 <div class="flex gap-3"><button onclick="stopTerminalProcess('terminal-output')" class="hover:text-red-300"><i class="fas fa-stop"></i> Parar</button><button onclick="clearTerminal()" class="hover:text-white"><i class="fas fa-ban"></i> Limpar Console</button></div>
                             </div>
-                            <div id="terminal-output" class="flex-1 p-3 overflow-y-auto text-green-400 whitespace-pre-wrap">Terminal Python pronto. No aplicativo local, os programas são executados com o Python instalado no computador.</div>
+                            <div id="terminal-output" class="flex-1 p-3 overflow-y-auto text-green-400 whitespace-pre-wrap">Terminal Python pronto. Os programas são executados pelo Python do servidor PyCode Studio.</div>
                             <form class="flex gap-2 border-t border-vscode-border p-2" onsubmit="event.preventDefault();sendTerminalInput('terminal-output','terminal-input')">
                                 <span class="text-green-400 self-center">&gt;</span><input id="terminal-input" autocomplete="off" disabled class="flex-1 bg-transparent outline-none text-white disabled:opacity-40" placeholder="Aguardando o Python solicitar input()..." aria-label="Entrada para o terminal Python"><button class="bg-vscode-activity px-3 py-1 rounded text-white disabled:opacity-40" type="submit" disabled>Enviar</button>
                             </form>
@@ -607,7 +608,7 @@ resultado = somar(5, 10)</pre>
             </h3>
             <p class="text-xs text-gray-400 mt-1">Explique o código, entenda erros e receba sugestões linha a linha.</p>
         </div>
-        <span id="ai-status" class="text-xs text-yellow-300">Verificando conexão local…</span>
+        <span id="ai-status" class="text-xs text-yellow-300">Verificando servidor…</span>
     </div>
 
     <label for="ai-question" class="block text-xs text-gray-300">O que você quer entender?</label>
@@ -628,7 +629,7 @@ resultado = somar(5, 10)</pre>
 
     <div id="ai-tutor-output" class="hidden bg-[#181818] border border-vscode-border rounded-lg p-3 text-sm text-gray-200 whitespace-pre-wrap" aria-live="polite"></div>
 
-    <p class="text-[11px] text-gray-500">Privacidade: se você configurar uma chave de API, o texto da pergunta e, quando marcado, o código/erro serão enviados ao provedor de IA. A chave fica no arquivo local .env, nunca no HTML.</p>
+    <p class="text-[11px] text-gray-500">Privacidade: a pergunta e, quando você marcar a opção, o código/erro são enviados ao Gemini para gerar a resposta. A chave da API fica nas variáveis de ambiente do servidor e nunca é enviada ao navegador.</p>
 </div>
 
     </div>
@@ -755,7 +756,7 @@ print(x // y)</pre>
                             <div class="flex justify-between items-center border-b border-vscode-border pb-2"><h3 class="text-xs uppercase font-bold text-gray-300"><i class="fas fa-terminal mr-1"></i> Terminal da Voz</h3><div class="flex gap-3"><button onclick="stopTerminalProcess('voice-terminal-output')" class="text-xs text-red-300 hover:text-red-200"><i class="fas fa-stop mr-1"></i> Parar</button><button onclick="clearVoiceTerminal()" class="text-xs text-gray-400 hover:text-white"><i class="fas fa-eraser mr-1"></i> Limpar</button></div></div>
                             <pre id="voice-terminal-output" class="flex-1 min-h-[250px] overflow-auto whitespace-pre-wrap bg-[#181818] p-3 mt-3 rounded text-xs font-mono text-green-300">Terminal da voz pronto. O resultado da execução aparecerá aqui.</pre>
                             <form class="flex gap-2 mt-2" onsubmit="event.preventDefault();sendTerminalInput('voice-terminal-output','voice-terminal-input')"><span class="text-green-400 self-center">&gt;</span><input id="voice-terminal-input" autocomplete="off" disabled class="flex-1 bg-[#181818] border border-vscode-border rounded px-2 py-1 text-white text-xs outline-none disabled:opacity-40" placeholder="Aguardando input()..."><button type="submit" disabled class="bg-vscode-activity px-3 py-1 rounded text-white text-xs disabled:opacity-40">Enviar</button></form>
-                            <p class="text-[11px] text-gray-500 mt-2">No aplicativo local, este terminal aceita respostas a input(). O reconhecimento de voz depende do navegador e da permissão do microfone. Revise o código antes de executar.</p>
+                            <p class="text-[11px] text-gray-500 mt-2">Este terminal aceita respostas a input(). O reconhecimento de voz depende do navegador e da permissão do microfone. Revise o código antes de executar.</p>
                         </div>
                     </div>
                     <details class="bg-vscode-sidebar border border-vscode-border rounded-xl p-4"><summary class="cursor-pointer text-sm font-semibold text-white">Comandos de voz aceitos (português e inglês)</summary><div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3 text-xs text-gray-300"><div><strong class="text-yellow-300">Português</strong><p>print; definir função; se; senão; para cada; enquanto; retornar; verdadeiro/falso; recebe/igual; mais/menos/vezes/dividido por; abre/fecha parênteses; aspas; dois pontos; vírgula; nova linha; apagar palavra; apagar linha; limpar código.</p></div><div><strong class="text-yellow-300">English</strong><p>print; define function; if; else; for; while; return; true/false; equals/assign; plus/minus/times/divided by; open/close parenthesis; quotation marks; colon; comma; new line; delete word; delete line; clear code.</p></div></div><p class="text-[11px] text-gray-500 mt-3">Dica: para strings e estruturas, dite pontuação explicitamente, por exemplo: “print, open parenthesis, quotation marks, hello, quotation marks, close parenthesis”.</p></details>
@@ -780,8 +781,6 @@ print(x // y)</pre>
 
     <!-- Monaco Editor: editor de código usado pelo VS Code (requer internet) -->
     <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
-    <!-- Interpretador Python real no navegador (carrega sob demanda; requer internet) -->
-    <script src="https://cdn.jsdelivr.net/pyodide/v0.27.7/full/pyodide.js"></script>
     <!-- JavaScript Logic -->
     <script>
         // Custom popup notification replacing native alert()
@@ -804,16 +803,36 @@ print(x // y)</pre>
         const monacoModels = new Map();
         let editorHasOpenFile = false;
         const PROJECT_STORAGE_KEY = 'pycode-studio-files-v2';
-        function persistVirtualFiles() {
-            try { localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify({ currentFile, files: virtualFiles })); }
-            catch (_) { /* O armazenamento local pode estar desativado ou cheio. */ }
+        let persistTimer = null;
+        function isSafeProjectPath(name) {
+            if (typeof name !== 'string' || !name.trim() || name.includes('\\')) return false;
+            const parts = name.split('/');
+            return parts.length <= 10 && parts.every(part =>
+                part && part !== '.' && part !== '..' && part.length <= 120 &&
+                !/[*?"<>|:]/.test(part)
+            );
         }
+        function persistVirtualFilesNow() {
+            try {
+                localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify({ currentFile, files: virtualFiles }));
+            } catch (_) {
+                showNotification('Não foi possível guardar o projeto neste navegador. Exporte uma cópia JSON.');
+            }
+        }
+        function persistVirtualFiles() {
+            if (persistTimer) clearTimeout(persistTimer);
+            persistTimer = setTimeout(() => {
+                persistTimer = null;
+                persistVirtualFilesNow();
+            }, 450);
+        }
+        window.addEventListener('beforeunload', persistVirtualFilesNow);
         function restoreVirtualFiles() {
             try {
                 const saved = JSON.parse(localStorage.getItem(PROJECT_STORAGE_KEY) || 'null');
                 if (saved && saved.files && typeof saved.files === 'object') {
                     Object.entries(saved.files).forEach(([name, content]) => {
-                        if (typeof content === 'string' && name && !/[\\/:*?"<>|]/.test(name)) virtualFiles[name] = content;
+                        if (typeof content === 'string' && isSafeProjectPath(name)) virtualFiles[name] = content;
                     });
                     if (saved.currentFile && Object.prototype.hasOwnProperty.call(virtualFiles, saved.currentFile)) currentFile = saved.currentFile;
                 }
@@ -1070,57 +1089,56 @@ document.getElementById('line-numbers').classList.add('hidden');
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveCurrentFile(); }
         });
 
-        // Execução local real via backend (Python instalado) com fallback Pyodide ao abrir o HTML isolado.
-        let pyodideInstance = null;
-        let pyodideLoadPromise = null;
+        // Execução Python no servidor hospedado pelo Render.
         const activeTerminalSockets = {};
         // Só libera a digitação quando o backend enviar input_requested.
         const terminalInputWaiting = {};
         let lastPythonError = '';
-        let localBackendAvailable = false;
+        let backendAvailable = false;
+        let backendCheckPromise = null;
         async function refreshBackendStatus() {
-            try {
-                const response = await fetch('/api/health', { cache: 'no-store' });
-                if (!response.ok) throw new Error('backend indisponível');
-                const data = await response.json();
-                localBackendAvailable = true;
+            if (backendCheckPromise) return backendCheckPromise;
+            backendCheckPromise = (async () => {
+                let lastError = null;
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    try {
+                        const response = await fetch('/api/health', { cache: 'no-store', credentials: 'same-origin' });
+                        if (!response.ok) throw new Error('Servidor respondeu HTTP ' + response.status);
+                        const data = await response.json();
+                        backendAvailable = Boolean(data.ok);
+                        const ai = document.getElementById('ai-status');
+                        if (ai) ai.innerText = data.aiConfigured ? 'Gemini conectado' : 'Gemini não configurado no Render';
+                        const status = document.querySelector('header .bg-vscode-activity');
+                        if (status) status.innerHTML = '<span class="w-2 h-2 rounded-full bg-green-500"></span> Python conectado: ' + escapeHtml(data.pythonVersion || 'online');
+                        return backendAvailable;
+                    } catch (error) {
+                        lastError = error;
+                        backendAvailable = false;
+                        if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 900));
+                    }
+                }
                 const ai = document.getElementById('ai-status');
-                if (ai) ai.innerText = data.aiConfigured ? 'IA conectada' : 'IA não configurada (adicione a chave no .env)';
-                const status = document.querySelector('header .bg-vscode-activity');
-                if (status) status.innerHTML = '<span class="w-2 h-2 rounded-full bg-green-500"></span> Python local: ' + escapeHtml(data.pythonVersion || 'conectado');
-            } catch (_) {
-                localBackendAvailable = false;
-                const ai = document.getElementById('ai-status');
-                if (ai) ai.innerText = 'Abra pelo iniciar.bat para habilitar a IA';
-            }
-        }
-        async function getPyodide() {
-            if (pyodideInstance) return pyodideInstance;
-            if (typeof loadPyodide !== 'function') throw new Error('Interpretador indisponível. Execute o aplicativo pelo iniciar.bat ou verifique a conexão.');
-            if (!pyodideLoadPromise) pyodideLoadPromise = loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.7/full/' });
-            pyodideInstance = await pyodideLoadPromise;
-            return pyodideInstance;
+                if (ai) ai.innerText = 'Servidor temporariamente indisponível';
+                console.warn('PyCode Studio backend indisponível:', lastError);
+                return false;
+            })();
+            try { return await backendCheckPromise; }
+            finally { backendCheckPromise = null; }
         }
         async function executePythonCode(code, outputElement, runFilename) {
             const output = typeof outputElement === 'string' ? document.getElementById(outputElement) : outputElement;
             if (!output) return;
-            if (localBackendAvailable && location.protocol.startsWith('http')) {
-                await runPythonInLocalBackend(code, output.id, output.id === 'voice-terminal-output' ? 'voice-terminal-input' : 'terminal-input', runFilename || currentFile);
+            if (!backendAvailable) await refreshBackendStatus();
+            if (!backendAvailable) {
+                output.innerText = 'O servidor do PyCode Studio não está disponível. Atualize a página e tente novamente.';
                 return;
             }
-            output.innerText = '>>> Preparando o Python no navegador…\n';
-            try {
-                const py = await getPyodide();
-                let captured = '';
-                py.setStdout({ batched: text => { captured += text + '\n'; } });
-                py.setStderr({ batched: text => { captured += text + '\n'; } });
-                await py.runPythonAsync(code);
-                lastPythonError = '';
-                output.innerText = '>>> ' + (output.id === 'voice-terminal-output' ? 'Código de voz' : currentFile) + '\n' + (captured || 'Código executado sem saída.') + '\n[Execução finalizada]\nObservação: modo navegador; input() pode abrir uma caixa de diálogo.';
-            } catch (err) {
-                lastPythonError = err && err.message ? err.message : String(err);
-                output.innerText = 'Erro Python:\n' + lastPythonError;
-            }
+            await runPythonOnServer(
+                code,
+                output.id,
+                output.id === 'voice-terminal-output' ? 'voice-terminal-input' : 'terminal-input',
+                runFilename || currentFile
+            );
         }
         function appendTerminalText(output, text) {
             if (!output) return;
@@ -1148,7 +1166,7 @@ document.getElementById('line-numbers').classList.add('hidden');
             }
         }
 
-        async function runPythonInLocalBackend(code, outputId, inputId, filename) {
+        async function runPythonOnServer(code, outputId, inputId, filename) {
             const output = document.getElementById(outputId);
             if (!output) return;
 
@@ -1162,7 +1180,7 @@ document.getElementById('line-numbers').classList.add('hidden');
             const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
             const socket = new WebSocket(protocol + '//' + location.host + '/ws/run');
             activeTerminalSockets[outputId] = socket;
-            output.innerText = '>>> Iniciando Python local…\n';
+            output.innerText = '>>> Iniciando Python no servidor…\n';
 
             const input = document.getElementById(inputId);
             if (input) input.dataset.terminalId = outputId;
@@ -1199,7 +1217,7 @@ document.getElementById('line-numbers').classList.add('hidden');
                     appendTerminalText(output, '\n[Processo finalizado — código ' + message.code + ']\n');
                     if (message.code === 0) lastPythonError = '';
                 } else if (message.type === 'started') {
-                    appendTerminalText(output, '[Python local iniciado]\n');
+                    appendTerminalText(output, '[Python do servidor iniciado]\n');
                 }
             };
 
@@ -1268,67 +1286,75 @@ document.getElementById('line-numbers').classList.add('hidden');
     await executePythonCode(code, 'terminal-output');
 }
        async function checkPythonSyntax() {
-    if (!editorHasOpenFile) {
-        showNotification('Abra um arquivo antes de verificar a sintaxe.');
-        return;
-    }
-
-    const code = getEditorValue();
-
-    if (!localBackendAvailable) {
-        try {
-            new Function(code);
-            showNotification('A verificação Python precisa do aplicativo local.');
-        } catch (_) {
-            showNotification('Abra o aplicativo local para verificar sintaxe Python.');
+            if (!editorHasOpenFile) {
+                showNotification('Abra um arquivo antes de verificar a sintaxe.');
+                return;
+            }
+            if (!backendAvailable) await refreshBackendStatus();
+            if (!backendAvailable) {
+                showNotification('O servidor não está disponível para verificar o Python. Atualize a página e tente novamente.');
+                return;
+            }
+            const code = getEditorValue();
+            try {
+                const response = await fetch('/api/check', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({code})
+                });
+                const data = await response.json();
+                if (response.status === 401) throw new Error('Sua sessão expirou. Atualize a página e entre novamente.');
+                if (!response.ok) throw new Error(data.detail || 'Falha na verificação.');
+                if (data.ok) {
+                    lastPythonError = '';
+                    showNotification('Sintaxe Python válida.');
+                } else {
+                    lastPythonError = data.error || 'Erro de sintaxe';
+                    showNotification(lastPythonError);
+                    document.getElementById('terminal-output').innerText = lastPythonError;
+                }
+            } catch (error) {
+                showNotification('Não foi possível verificar a sintaxe: ' + error.message);
+            }
         }
-        return;
-    }
-
-    try {
-        const response = await fetch('/api/check', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({code})
-        });
-
-        const data = await response.json();
-
-        if (data.ok) {
-            lastPythonError = '';
-            showNotification('Sintaxe Python válida.');
-        } else {
-            lastPythonError = data.error || 'Erro de sintaxe';
-            showNotification(lastPythonError);
-            document.getElementById('terminal-output').innerText = lastPythonError;
-        }
-    } catch (error) {
-        showNotification('Não foi possível verificar a sintaxe: ' + error.message);
-    }
-}
         async function runAutomatedChecks() {
-            if (!localBackendAvailable) { showNotification('Abra o aplicativo pelo iniciar.bat para executar os testes automatizados.'); return; }
-            const output = document.getElementById('terminal-output'); output.innerText = 'Executando testes automatizados do PyCode Studio…\n';
-            try { const response = await fetch('/api/tests', {method:'POST'}); const data = await response.json(); output.innerText = data.output || (data.ok ? 'Todos os testes passaram.' : 'Alguns testes falharam.'); }
-            catch (error) { output.innerText = 'Falha ao executar testes: ' + error.message; }
+            if (!backendAvailable) await refreshBackendStatus();
+            if (!backendAvailable) { showNotification('Servidor indisponível. Tente novamente em instantes.'); return; }
+            const output = document.getElementById('terminal-output');
+            output.innerText = 'Executando testes automatizados do PyCode Studio…\n';
+            try {
+                const response = await fetch('/api/tests', {method:'POST', credentials:'same-origin'});
+                const data = await response.json();
+                if (response.status === 401) throw new Error('Sua sessão expirou. Atualize a página e entre novamente.');
+                if (!response.ok) throw new Error(data.detail || 'Não foi possível executar os testes.');
+                output.innerText = data.output || (data.ok ? 'Todos os testes passaram.' : 'Alguns testes falharam.');
+            } catch (error) { output.innerText = 'Falha ao executar testes: ' + error.message; }
         }
         async function askPythonTutor(mode) {
             const output = document.getElementById('ai-tutor-output');
             if (!output) return;
-            if (!localBackendAvailable) { output.classList.remove('hidden'); output.innerText = 'O tutor de IA funciona no aplicativo local. Feche este arquivo e abra iniciar.bat.'; return; }
+            if (!backendAvailable) await refreshBackendStatus();
+            if (!backendAvailable) {
+                output.classList.remove('hidden');
+                output.innerText = 'Não foi possível conectar ao servidor do PyCode Studio. Atualize a página e tente novamente.';
+                return;
+            }
             const question = (document.getElementById('ai-question')?.value || '').trim();
             const includeCode = document.getElementById('ai-send-code')?.checked;
             const code = includeCode ? getEditorValue() : '';
             const error = includeCode ? lastPythonError : '';
             if (mode === 'question' && !question) { showNotification('Escreva sua pergunta para o tutor.'); return; }
-            output.classList.remove('hidden'); output.innerText = 'O tutor está analisando…';
+            output.classList.remove('hidden'); output.innerText = 'O tutor Gemini está analisando…';
             try {
-                const response = await fetch('/api/tutor', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mode, question, code, error})});
+                const response = await fetch('/api/tutor', {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mode, question, code, error})});
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.detail || data.error || 'Não foi possível consultar o tutor.');
                 output.innerText = data.answer || 'O tutor não retornou texto.';
                 window.lastTutorAnswer = output.innerText;
-            } catch (err) { output.innerText = 'Não foi possível obter a resposta. ' + err.message + '\n\nVerifique se a chave OPENAI_API_KEY está configurada no arquivo .env e se há conexão com a internet.'; }
+            } catch (err) {
+                output.innerText = 'Não foi possível obter a resposta. ' + err.message + '\n\nConfira se GEMINI_API_KEY está configurada nas variáveis de ambiente do serviço no Render.';
+            }
         }
         function speakTutorAnswer() {
             const text = window.lastTutorAnswer || document.getElementById('ai-tutor-output')?.innerText || '';
@@ -2094,6 +2120,100 @@ function refreshFileExplorer() {
 }
 
         
+function downloadBlob(filename, content, type = 'text/plain;charset=utf-8') {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function saveCurrentFile() {
+    if (!editorHasOpenFile || !currentFile) {
+        showNotification('Abra um arquivo antes de salvar.');
+        return;
+    }
+    virtualFiles[currentFile] = getEditorValue();
+    persistVirtualFilesNow();
+    const filename = currentFile.split('/').pop() || 'main.py';
+    downloadBlob(filename, virtualFiles[currentFile]);
+    showNotification('Arquivo baixado: ' + filename);
+    document.getElementById('file-menu')?.classList.add('hidden');
+}
+
+function exportProject() {
+    if (editorHasOpenFile && currentFile) virtualFiles[currentFile] = getEditorValue();
+    persistVirtualFilesNow();
+    const project = {
+        app: 'PyCode Studio',
+        formatVersion: 1,
+        currentFile: currentFile || 'main.py',
+        files: virtualFiles
+    };
+    downloadBlob('pycode-studio-projeto.json', JSON.stringify(project, null, 2), 'application/json;charset=utf-8');
+    showNotification('Projeto exportado em JSON. Guarde esse arquivo como backup.');
+    document.getElementById('file-menu')?.classList.add('hidden');
+}
+
+async function importUserFile(event) {
+    const input = event?.target;
+    const file = input?.files?.[0];
+    if (!file) return;
+    try {
+        if (file.size > 10 * 1024 * 1024) throw new Error('O arquivo excede o limite de 10 MB.');
+        const content = await file.text();
+        if (file.name.toLowerCase().endsWith('.json')) {
+            const parsed = JSON.parse(content);
+            if (!parsed || parsed.app !== 'PyCode Studio' || !parsed.files || typeof parsed.files !== 'object' || Array.isArray(parsed.files)) {
+                throw new Error('JSON inválido. Selecione um projeto exportado pelo PyCode Studio.');
+            }
+            const imported = {};
+            let total = 0;
+            for (const [name, value] of Object.entries(parsed.files)) {
+                if (!isSafeProjectPath(name) || typeof value !== 'string') throw new Error('O projeto contém um nome ou conteúdo de arquivo inválido.');
+                const bytes = new Blob([value]).size;
+                if (bytes > 2 * 1024 * 1024) throw new Error('Um arquivo do projeto excede 2 MB.');
+                total += bytes;
+                if (total > 10 * 1024 * 1024) throw new Error('O projeto excede 10 MB.');
+                imported[name] = value;
+            }
+            if (!Object.keys(imported).length) throw new Error('O projeto não contém arquivos.');
+            if (!confirm('Importar este projeto e substituir os arquivos atualmente abertos?')) return;
+            Object.keys(monacoModels).forEach(name => { monacoModels.get(name)?.dispose(); });
+            monacoModels.clear();
+            Object.keys(virtualFiles).forEach(name => delete virtualFiles[name]);
+            Object.assign(virtualFiles, imported);
+            currentFile = Object.prototype.hasOwnProperty.call(virtualFiles, parsed.currentFile) ? parsed.currentFile : Object.keys(virtualFiles)[0];
+            openFiles.clear();
+            editorHasOpenFile = false;
+            switchFile(currentFile);
+            refreshFileExplorer();
+            renderFileTabs();
+            persistVirtualFilesNow();
+            showNotification('Projeto importado com sucesso.');
+        } else {
+            const name = file.name.replace(/[^a-zA-Z0-9._ -]/g, '_');
+            if (!isSafeProjectPath(name)) throw new Error('Nome de arquivo inválido.');
+            if (new Blob([content]).size > 2 * 1024 * 1024) throw new Error('O arquivo excede 2 MB.');
+            if (Object.prototype.hasOwnProperty.call(virtualFiles, name) && !confirm('O arquivo já existe. Deseja substituí-lo?')) return;
+            if (editorHasOpenFile && currentFile) virtualFiles[currentFile] = getEditorValue();
+            virtualFiles[name] = content;
+            switchFile(name);
+            persistVirtualFilesNow();
+            showNotification('Arquivo importado: ' + name);
+        }
+    } catch (error) {
+        showNotification('Não foi possível importar: ' + error.message);
+    } finally {
+        if (input) input.value = '';
+        document.getElementById('file-menu')?.classList.add('hidden');
+    }
+}
+
 function newUserFile() {
     let name = prompt(
         'Nome do arquivo (ex.: main.py ou funcoes/calculos.py):',
@@ -2189,9 +2309,10 @@ function removeCurrentFile() {
 }
         // Initialize App on Page Load
         window.onload = function() {
-            currentFile = 'main.py';
+            if (!Object.prototype.hasOwnProperty.call(virtualFiles, currentFile)) currentFile = Object.keys(virtualFiles)[0] || 'main.py';
+            if (!Object.prototype.hasOwnProperty.call(virtualFiles, currentFile)) virtualFiles[currentFile] = '';
             editorHasOpenFile = true;
-            openFiles.add('main.py');
+            openFiles.add(currentFile);
 
             document.getElementById('current-filename').innerText = currentFile;
             document.getElementById('code-editor').value = virtualFiles[currentFile] || '';
