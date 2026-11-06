@@ -1580,7 +1580,7 @@ document.getElementById('line-numbers').classList.add('hidden');
             if (/append|extend|insert|remove|pop|sort|reverse|count|index|copy|clear/.test(normalized)) return 'https://docs.python.org/3/library/stdtypes.html#mutable-sequence-types';
             if (/lower|upper|strip|replace|split|join|capitalize|title|casefold|find|startswith|endswith|isalpha|isdigit|isalnum/.test(normalized)) return 'https://docs.python.org/3/library/stdtypes.html#text-sequence-type-str';
             if (/keys|values|items|get|update|setdefault|popitem/.test(normalized)) return 'https://docs.python.org/3/library/stdtypes.html#mapping-types-dict';
-            if (/and|or|not|in|is/.test(normalized) || /[=<>+*/%&|^~]/.test(name)) return 'https://docs.python.org/3/reference/expressions.html#operator-precedence';
+            if (/and|or|not|in|is/.test(normalized) || /[=<>+*\/%&|^~]/.test(name)) return 'https://docs.python.org/3/reference/expressions.html#operator-precedence';
             return 'https://docs.python.org/3/search.html?q=' + encodeURIComponent(name);
         }
 
