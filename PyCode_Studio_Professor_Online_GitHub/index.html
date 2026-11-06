@@ -1589,7 +1589,10 @@ document.getElementById('line-numbers').classList.add('hidden');
             if (!input || !results) return;
             const term = input.value.trim().toLocaleLowerCase('pt-BR');
             results.replaceChildren();
-            const matches = pythonReference.filter(item => item.join(' ').toLocaleLowerCase('pt-BR').includes(term)).slice(0, 40);
+            const matches = (Array.isArray(pythonReference) ? pythonReference : [])
+                .filter(item => Array.isArray(item) && item.length >= 3)
+                .filter(item => item.map(value => String(value ?? '')).join(' ').toLocaleLowerCase('pt-BR').includes(term))
+                .slice(0, 40);
             if (!matches.length) {
                 const empty = document.createElement('p'); empty.className = 'text-sm text-gray-400';
                 empty.textContent = 'Nenhum comando encontrado. Tente outro termo.'; results.appendChild(empty); return;
@@ -2549,7 +2552,7 @@ function removeCurrentFile() {
             clearTerminal();
             updateLineNumbers();
             refreshFileExplorer();
-            addExtraDocs();
+            // Documentação extra já está integrada em pythonReference; não chamar função inexistente.
             initMonacoEditor();
             refreshBackendStatus();
             loadQuizQuestion();
