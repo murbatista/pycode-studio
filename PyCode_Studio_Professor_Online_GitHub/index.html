@@ -1553,7 +1553,7 @@ document.getElementById('line-numbers').classList.add('hidden');
         ];
 
         function getPythonOfficialDocUrl(name) {
-            const normalized = name.toLowerCase().replace(/\\s+/g, '');
+            const normalized = name.toLowerCase().replace(/\s+/g, '');
             const builtinNames = ['abs','aiter','all','anext','any','ascii','bin','breakpoint','bytearray','bytes','callable','chr','classmethod','compile','complex','delattr','dict','dir','divmod','enumerate','eval','exec','filter','float','format','frozenset','getattr','globals','hasattr','hash','help','hex','id','input','int','isinstance','issubclass','iter','len','list','locals','map','max','memoryview','min','next','object','oct','open','ord','pow','print','property','range','repr','reversed','round','set','setattr','slice','sorted','staticmethod','str','sum','super','tuple','type','vars','zip','__import__'];
             const keywordSections = {
                 'if/elif/else':'compound_stmts.html#if',
@@ -1561,6 +1561,7 @@ document.getElementById('line-numbers').classList.add('hidden');
                 'while':'compound_stmts.html#the-while-statement',
                 'try/except':'compound_stmts.html#the-try-statement',
                 'with':'compound_stmts.html#the-with-statement',
+                'with/open()':'compound_stmts.html#the-with-statement',
                 'match/case':'compound_stmts.html#the-match-statement',
                 'def/return':'compound_stmts.html#function-definitions',
                 'class':'compound_stmts.html#class-definitions',
