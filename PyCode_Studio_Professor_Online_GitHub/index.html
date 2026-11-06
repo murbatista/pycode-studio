@@ -802,7 +802,8 @@ print(x // y)</pre>
         const openFiles = new Set();
         const monacoModels = new Map();
         let editorHasOpenFile = false;
-        const PROJECT_STORAGE_KEY = 'pycode-studio-files-v2';
+        const PROJECT_STORAGE_KEY = 'pycode-studio-session-files-v3';
+        let serverBootId = null;
         let persistTimer = null;
         function isSafeProjectPath(name) {
             if (typeof name !== 'string' || !name.trim() || name.includes('\\')) return false;
@@ -813,32 +814,66 @@ print(x // y)</pre>
             );
         }
         function persistVirtualFilesNow() {
+            if (!serverBootId) return;
             try {
-                localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify({ currentFile, files: virtualFiles }));
-            } catch (_) {
-                showNotification('Não foi possível guardar o projeto neste navegador. Exporte uma cópia JSON.');
-            }
+                sessionStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify({bootId:serverBootId,currentFile,files:virtualFiles}));
+            } catch (_) { showNotification('Não foi possível manter a sessão neste navegador. Exporte uma cópia JSON.'); }
         }
         function persistVirtualFiles() {
             if (persistTimer) clearTimeout(persistTimer);
-            persistTimer = setTimeout(() => {
-                persistTimer = null;
-                persistVirtualFilesNow();
-            }, 450);
+            persistTimer = setTimeout(() => { persistTimer = null; persistVirtualFilesNow(); }, 350);
         }
         window.addEventListener('beforeunload', persistVirtualFilesNow);
-        function restoreVirtualFiles() {
+        function resetProjectToDefaults() {
+            monacoModels.forEach(model => model.dispose());
+            monacoModels.clear();
+            Object.keys(virtualFiles).forEach(name => delete virtualFiles[name]);
+            Object.assign(virtualFiles, {
+                'main.py': '# Bem-vindo ao PyCode Studio!\nnome = "Desenvolvedor"\nprint(f"Olá, {nome}! Bem-vindo à sua IDE Python.")\n\nfor i in range(1, 4):\n    print(f"Contagem regressiva: {i}")\n\nprint("Pronto para codificar!")',
+                'exemplos.py': '# Exemplos de Estruturas Python\n\ndef calcular_media(notas):\n    return sum(notas) / len(notas)\n\nlista_notas = [8.5, 9.0, 7.5]\nprint("Média:", calcular_media(lista_notas))',
+                'exercicios.py': '# Exercício: Verificador de número par\nnumero = 10\nif numero % 2 == 0:\n    print(f"{numero} é PAR")\nelse:\n    print(f"{numero} é ÍMPAR")'
+            });
+            currentFile = 'main.py';
+            openFiles.clear();
+            openFiles.add(currentFile);
+            editorHasOpenFile = true;
+            if (monacoEditor && typeof monaco !== 'undefined') {
+                const model = monaco.editor.createModel(virtualFiles[currentFile], 'python');
+                monacoModels.set(currentFile, model);
+                monacoEditor.setModel(model);
+            } else {
+                const fallback = document.getElementById('code-editor');
+                if (fallback) fallback.value = virtualFiles[currentFile];
+            }
+            const filenameLabel = document.getElementById('current-filename');
+            if (filenameLabel) filenameLabel.innerText = currentFile;
+            if (typeof refreshFileExplorer === 'function') refreshFileExplorer();
+            if (typeof renderFileTabs === 'function') renderFileTabs();
+        }
+        async function initializeSessionFiles() {
             try {
-                const saved = JSON.parse(localStorage.getItem(PROJECT_STORAGE_KEY) || 'null');
-                if (saved && saved.files && typeof saved.files === 'object') {
-                    Object.entries(saved.files).forEach(([name, content]) => {
+                const response = await fetch('/api/health', {cache:'no-store',credentials:'same-origin'});
+                if (!response.ok) throw new Error('Servidor indisponível');
+                const health = await response.json();
+                if (!health.ok || !health.bootId) throw new Error('Identificador da sessão ausente');
+                serverBootId = health.bootId;
+                const saved = JSON.parse(sessionStorage.getItem(PROJECT_STORAGE_KEY) || 'null');
+                if (saved && saved.bootId === serverBootId && saved.files && typeof saved.files === 'object') {
+                    Object.entries(saved.files).forEach(([name,content]) => {
                         if (typeof content === 'string' && isSafeProjectPath(name)) virtualFiles[name] = content;
                     });
-                    if (saved.currentFile && Object.prototype.hasOwnProperty.call(virtualFiles, saved.currentFile)) currentFile = saved.currentFile;
+                    if (saved.currentFile && Object.prototype.hasOwnProperty.call(virtualFiles,saved.currentFile)) currentFile = saved.currentFile;
+                } else {
+                    sessionStorage.removeItem(PROJECT_STORAGE_KEY);
+                    resetProjectToDefaults();
                 }
-            } catch (_) { /* Ignora dados locais inválidos e usa o projeto inicial. */ }
+            } catch (error) {
+                serverBootId = null;
+                try { sessionStorage.removeItem(PROJECT_STORAGE_KEY); } catch (_) {}
+                resetProjectToDefaults();
+                console.warn('Não foi possível recuperar os arquivos desta sessão:',error);
+            }
         }
-       restoreVirtualFiles();
 
         // Tab Switching
         function setActiveTab(tabId) {
@@ -1006,7 +1041,7 @@ print(x // y)</pre>
             }
             const lines = editor.value.split('\n').length;
             const lineNumbersDiv = document.getElementById('line-numbers');
-            lineNumbersDiv.innerHTML = Array.from({length: lines}, (_, i) => i + 1).join('<br>');
+            if (lineNumbersDiv) lineNumbersDiv.innerHTML = Array.from({length: lines}, (_, i) => i + 1).join('<br>');
             virtualFiles[currentFile] = editor.value;
             persistVirtualFiles();
         }
@@ -1053,6 +1088,37 @@ print(x // y)</pre>
 });
 
 monacoModels.set(currentFile, monacoEditor.getModel());
+const pyHints = [
+['print','print(valor)','Exibe valores no terminal.'],['input','input("Mensagem: ")','Lê texto digitado.'],
+['len','len(objeto)','Retorna quantidade de itens.'],['range','range(inicio, fim)','Gera uma sequência.'],
+['int','int(valor)','Converte para inteiro.'],['float','float(valor)','Converte para decimal.'],['str','str(valor)','Converte para texto.'],
+['sum','sum(iteravel)','Soma valores.'],['enumerate','enumerate(iteravel)','Fornece índice e item.'],['zip','zip(a, b)','Combina sequências.'],
+['append','lista.append(valor)','Adiciona item à lista.'],['extend','lista.extend(itens)','Adiciona vários itens.'],['insert','lista.insert(indice, valor)','Insere item.'],
+['remove','lista.remove(valor)','Remove valor.'],['pop','lista.pop()','Remove e retorna item.'],['sort','lista.sort()','Ordena lista.'],
+['split','texto.split(separador)','Divide texto.'],['join','separador.join(textos)','Une textos.'],['keys','dicionario.keys()','Retorna chaves.'],
+['values','dicionario.values()','Retorna valores.'],['items','dicionario.items()','Retorna pares.'],['get','dicionario.get(chave, padrao)','Busca chave.'],
+['def','def nome(parametro):','Define função.'],['return','return resultado','Devolve resultado.'],['class','class Nome:','Define classe.'],
+['if','if condicao:','Inicia condição.'],['elif','elif condicao:','Outra condição.'],['else','else:','Caminho alternativo.'],
+['for','for item in iteravel:','Percorre sequência.'],['while','while condicao:','Repete enquanto verdadeiro.'],
+['try','try:','Inicia tratamento de exceções.'],['except','except ValueError:','Captura exceção.'],
+['with','with open("arquivo.txt") as f:','Gerencia recurso.'],['import','import modulo','Importa módulo.'],
+['True','True','Valor verdadeiro.'],['False','False','Valor falso.'],['None','None','Ausência de valor.']
+];
+monaco.languages.registerCompletionItemProvider('python', {
+ triggerCharacters:['.','('],
+ provideCompletionItems:(model, position) => {
+  const word=model.getWordUntilPosition(position), range={startLineNumber:position.lineNumber,endLineNumber:position.lineNumber,startColumn:word.startColumn,endColumn:word.endColumn};
+  return {suggestions:pyHints.map(([label,insertText,detail])=>({label,kind:monaco.languages.CompletionItemKind.Function,insertText,detail,documentation:detail,range}))};
+ }
+});
+monaco.languages.registerHoverProvider('python', {
+ provideHover:(model,position)=>{
+  const word=model.getWordAtPosition(position); if(!word)return null;
+  const hint=pyHints.find(item=>item[0]===word.word); if(!hint)return null;
+  return {range:new monaco.Range(position.lineNumber,word.startColumn,position.lineNumber,word.endColumn),contents:[{value:'**'+hint[0]+'**'},{value:hint[2]},{value:'`'+hint[1]+'`'}]};
+ }
+});
+
 renderFileTabs();
 
 host.classList.remove('hidden');
@@ -1109,7 +1175,7 @@ document.getElementById('line-numbers').classList.add('hidden');
                         const data = await response.json();
                         backendAvailable = Boolean(data.ok);
                         const ai = document.getElementById('ai-status');
-                        if (ai) ai.innerText = data.aiConfigured ? 'Gemini conectado' : 'Gemini não configurado no Render';
+                        if (ai) ai.innerText = data.aiConfigured ? 'Chave Gemini configurada (disponibilidade externa)' : 'Gemini não configurado no Render';
                         const status = document.querySelector('header .bg-vscode-activity');
                         if (status) status.innerHTML = '<span class="w-2 h-2 rounded-full bg-green-500"></span> Python conectado: ' + String(data.pythonVersion || 'online').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
                         return backendAvailable;
@@ -1384,6 +1450,169 @@ document.getElementById('line-numbers').classList.add('hidden');
             const current = getEditorValue();
             setEditorValue(current + (current.trim() ? '\n\n' : '') + code);
             if (monacoEditor) monacoEditor.focus();
+        }
+        const pythonReference = [
+            ['print()', 'Exibe valores no terminal.', 'print("Olá, mundo!")', 'saída texto'],
+            ['input()', 'Lê um texto digitado pelo usuário.', 'nome = input("Nome: ")', 'entrada usuário'],
+            ['len()', 'Retorna a quantidade de itens.', 'print(len([10, 20, 30]))', 'tamanho lista string'],
+            ['type()', 'Informa o tipo de um valor.', 'print(type(10))', 'tipo classe'],
+            ['int()', 'Converte um valor para inteiro.', 'idade = int("18")', 'conversão número'],
+            ['float()', 'Converte para número decimal.', 'preco = float("9.5")', 'conversão decimal'],
+            ['str()', 'Converte um valor para texto.', 'mensagem = str(123)', 'conversão texto'],
+            ['bool()', 'Converte um valor para verdadeiro ou falso.', 'print(bool(1))', 'booleano'],
+            ['range()', 'Gera uma sequência de números.', 'for n in range(1, 4):\n    print(n)', 'laço repetição'],
+            ['sum()', 'Soma elementos numéricos.', 'print(sum([2, 3, 5]))', 'soma lista'],
+            ['min() / max()', 'Retorna o menor ou maior elemento.', 'print(min([8, 2, 5]), max([8, 2, 5]))', 'mínimo máximo'],
+            ['abs() / round()', 'Valor absoluto e arredondamento.', 'print(abs(-7), round(3.14159, 2))', 'número'],
+            ['sorted()', 'Cria uma lista ordenada.', 'print(sorted([3, 1, 2]))', 'ordenar'],
+            ['enumerate()', 'Percorre itens com seus índices.', 'for i, item in enumerate(["Ana", "Bia"]):\n    print(i, item)', 'índice posição'],
+            ['zip()', 'Combina elementos de sequências.', 'for nome, nota in zip(["Ana"], [9]):\n    print(nome, nota)', 'combinar'],
+            ['append()', 'Adiciona um item ao final da lista.', 'nomes = ["Ana"]\nnomes.append("Bia")', 'lista adicionar'],
+            ['extend()', 'Adiciona vários itens à lista.', 'a = [1]\na.extend([2, 3])', 'lista adicionar'],
+            ['insert()', 'Insere item em uma posição.', 'cores = ["azul"]\ncores.insert(0, "verde")', 'lista inserir'],
+            ['remove() / pop()', 'Remove um item da lista.', 'numeros = [1, 2, 3]\nnumeros.remove(2)\nultimo = numeros.pop()', 'lista remover'],
+            ['sort()', 'Ordena a própria lista.', 'numeros = [3, 1, 2]\nnumeros.sort()', 'lista ordenar'],
+            ['split() / join()', 'Divide e une textos.', 'partes = "a,b".split(",")\nfrase = " ".join(partes)', 'texto'],
+            ['lower() / upper()', 'Converte texto para minúsculas ou maiúsculas.', 'print("Python".upper(), "PYTHON".lower())', 'string'],
+            ['strip() / replace()', 'Remove espaços nas pontas e substitui trechos.', 'print(" Ana ".strip())\nprint("casa".replace("c", "m"))', 'string'],
+            ['keys() / values() / items()', 'Acessa chaves, valores e pares de um dicionário.', 'p = {"nome": "Ana"}\nprint(p.keys(), p.values(), p.items())', 'dict dicionário'],
+            ['get()', 'Busca chave com valor padrão se não existir.', 'p = {"nome": "Ana"}\nprint(p.get("idade", 0))', 'dict buscar'],
+            ['if / elif / else', 'Executa blocos conforme condições.', 'nota = 8\nif nota >= 7:\n    print("Aprovado")\nelse:\n    print("Revisar")', 'condição decisão'],
+            ['for', 'Repete um bloco para cada item.', 'for letra in "Python":\n    print(letra)', 'laço repetição'],
+            ['while', 'Repete enquanto a condição for verdadeira.', 'n = 0\nwhile n < 3:\n    print(n)\n    n += 1', 'laço repetição'],
+            ['def / return', 'Define função e devolve resultado.', 'def somar(a, b):\n    return a + b', 'função'],
+            ['class', 'Define uma classe.', 'class Pessoa:\n    def __init__(self, nome):\n        self.nome = nome', 'classe objeto'],
+            ['try / except', 'Trata erros durante a execução.', 'try:\n    numero = int("abc")\nexcept ValueError:\n    print("Valor inválido")', 'erro exceção'],
+            ['with / open()', 'Abre e gerencia arquivos automaticamente.', 'with open("dados.txt", "w", encoding="utf-8") as f:\n    f.write("Olá")', 'arquivo'],
+            ['import', 'Importa módulos e bibliotecas.', 'import math\nprint(math.sqrt(25))', 'módulo biblioteca'],
+            ['lambda', 'Cria uma função pequena e anônima.', 'dobro = lambda n: n * 2', 'função anônima'],
+            ['and / or / not', 'Operadores lógicos.', 'print(10 > 5 and 3 < 4)', 'lógica booleano'],
+            ['in', 'Verifica se um item pertence a uma sequência.', 'print("py" in "python")', 'pertinência operador'],
+            ['break / continue', 'Controla a continuidade de laços.', 'for n in range(5):\n    if n == 3:\n        break\n    print(n)', 'laço controle']
+
+            ['abs()', 'Retorna o valor absoluto.', 'print(abs(-10))', 'número matemática'],
+            ['all()', 'Verifica se todos os itens são verdadeiros.', 'print(all([True, True, 1]))', 'lógica iterável'],
+            ['any()', 'Verifica se algum item é verdadeiro.', 'print(any([False, 0, True]))', 'lógica iterável'],
+            ['ascii()', 'Retorna uma representação ASCII.', 'print(ascii("ação"))', 'texto unicode'],
+            ['bin() / oct() / hex()', 'Converte inteiros para bases binária, octal e hexadecimal.', 'print(bin(10), oct(10), hex(10))', 'número base'],
+            ['bytearray() / bytes()', 'Cria sequências de bytes mutáveis ou imutáveis.', 'dados = bytearray([65, 66])\nprint(bytes(dados))', 'bytes binário'],
+            ['callable()', 'Verifica se um objeto pode ser chamado.', 'print(callable(print))', 'função objeto'],
+            ['chr() / ord()', 'Converte entre código Unicode e caractere.', 'print(chr(65), ord("A"))', 'unicode caractere'],
+            ['classmethod() / staticmethod()', 'Define métodos de classe e métodos estáticos.', 'class Exemplo:\n    @staticmethod\n    def ola(): return "Olá"', 'classe método'],
+            ['compile()', 'Compila código-fonte Python.', 'codigo = compile("print(2 + 2)", "<exemplo>", "exec")\nexec(codigo)', 'código compilação'],
+            ['complex()', 'Cria um número complexo.', 'print(complex(2, 3))', 'número complexo'],
+            ['delattr() / setattr()', 'Remove ou define atributos de objetos.', 'class Pessoa: pass\np = Pessoa()\nsetattr(p, "nome", "Ana")', 'atributo objeto'],
+            ['dict()', 'Cria um dicionário.', 'pessoa = dict(nome="Ana", idade=20)\nprint(pessoa)', 'dicionário'],
+            ['dir()', 'Lista nomes disponíveis em um objeto.', 'print(dir(str))', 'inspeção objeto'],
+            ['divmod()', 'Retorna quociente e resto de uma divisão.', 'print(divmod(17, 5))', 'divisão matemática'],
+            ['eval()', 'Avalia uma expressão Python.', 'print(eval("2 + 3"))', 'expressão avaliação'],
+            ['exec()', 'Executa código Python dinâmico.', 'exec("valor = 10")\nprint(valor)', 'código execução'],
+            ['filter()', 'Seleciona itens que atendem a uma condição.', 'print(list(filter(lambda n: n % 2 == 0, [1, 2, 3, 4])))', 'iterável filtro'],
+            ['format()', 'Formata um valor como texto.', 'print(format(3.14159, ".2f"))', 'texto formatação'],
+            ['frozenset()', 'Cria um conjunto imutável.', 'print(frozenset([1, 2, 2, 3]))', 'conjunto imutável'],
+            ['getattr() / hasattr()', 'Obtém um atributo ou verifica se ele existe.', 'class Pessoa: nome = "Ana"\np = Pessoa()\nprint(getattr(p, "nome"), hasattr(p, "idade"))', 'atributo objeto'],
+            ['globals() / locals()', 'Retorna variáveis dos escopos global e local.', 'nome = "Python"\nprint("nome" in globals())', 'escopo variável'],
+            ['hash()', 'Retorna o hash de um objeto.', 'print(hash("Python"))', 'hash objeto'],
+            ['help()', 'Mostra a ajuda integrada de um objeto.', 'help(str)', 'ajuda documentação'],
+            ['id()', 'Retorna a identidade de um objeto.', 'valor = 10\nprint(id(valor))', 'identidade objeto'],
+            ['isinstance() / issubclass()', 'Verifica tipos e relações de herança.', 'print(isinstance(10, int))\nprint(issubclass(bool, int))', 'tipo classe herança'],
+            ['iter() / next()', 'Cria um iterador e obtém seu próximo item.', 'it = iter([10, 20])\nprint(next(it))', 'iterador sequência'],
+            ['list() / tuple() / set()', 'Cria listas, tuplas e conjuntos.', 'print(list("abc"), tuple([1, 2]), set([1, 1, 2]))', 'coleção'],
+            ['map()', 'Aplica uma função a cada item de um iterável.', 'print(list(map(lambda n: n * 2, [1, 2, 3])))', 'iterável função'],
+            ['memoryview()', 'Acessa dados binários sem copiar o conteúdo.', 'dados = memoryview(b"ABC")\nprint(dados[0])', 'memória bytes'],
+            ['object()', 'Cria um objeto-base simples.', 'objeto = object()\nprint(type(objeto))', 'objeto classe'],
+            ['pow()', 'Calcula uma potência.', 'print(pow(2, 3), pow(2, 3, 5))', 'matemática potência'],
+            ['property()', 'Define uma propriedade controlada em uma classe.', 'class Produto:\n    def __init__(self, preco): self._preco = preco\n    @property\n    def preco(self): return self._preco', 'classe propriedade'],
+            ['repr()', 'Retorna uma representação técnica de um objeto.', 'print(repr("Olá\\nPython"))', 'representação texto'],
+            ['reversed()', 'Percorre uma sequência em ordem inversa.', 'print(list(reversed([1, 2, 3])))', 'sequência inversa'],
+            ['slice()', 'Cria um objeto que representa um recorte.', 'texto = "Python"\nprint(texto[slice(1, 4)])', 'fatiamento sequência'],
+            ['super()', 'Acessa métodos da classe-pai em uma herança.', 'class Base:\n    def falar(self): return "Base"\nclass Filha(Base):\n    def falar(self): return super().falar()', 'classe herança'],
+            ['vars()', 'Retorna atributos de um objeto em formato de dicionário.', 'class Pessoa: pass\np = Pessoa()\np.nome = "Ana"\nprint(vars(p))', 'atributos objeto'],
+            ['assert', 'Verifica uma condição e gera erro se for falsa.', 'idade = 20\nassert idade >= 18', 'palavra-chave teste'],
+            ['async / await', 'Define funções assíncronas e aguarda operações.', 'async def buscar():\n    return "concluído"', 'assíncrono função'],
+            ['del', 'Remove uma referência ou item de uma coleção.', 'numeros = [1, 2, 3]\ndel numeros[0]', 'palavra-chave remover'],
+            ['global / nonlocal', 'Declara variável de outro escopo.', 'contador = 0\ndef incrementar():\n    global contador\n    contador += 1', 'escopo variável'],
+            ['match / case', 'Faz correspondência de padrões (Python 3.10+).', 'valor = 2\nmatch valor:\n    case 1: print("um")\n    case 2: print("dois")\n    case _: print("outro")', 'condição padrão'],
+            ['pass', 'Representa um bloco vazio.', 'def funcao_futura():\n    pass', 'palavra-chave bloco'],
+            ['raise', 'Dispara uma exceção manualmente.', 'raise ValueError("Valor inválido")', 'erro exceção'],
+            ['yield / yield from', 'Produz valores em geradores.', 'def contar():\n    yield 1\n    yield 2\nprint(list(contar()))', 'gerador iterador'],
+            ['is', 'Verifica se duas referências apontam para o mesmo objeto.', 'valor = None\nprint(valor is None)', 'operador identidade'],
+            ['not in', 'Verifica se um item não pertence a uma sequência.', 'print("z" not in "Python")', 'operador pertinência'],
+            ['count() / index()', 'Conta ocorrências ou encontra a posição de um item.', 'letras = ["a", "b", "a"]\nprint(letras.count("a"), letras.index("b"))', 'lista texto posição'],
+            ['copy() / clear()', 'Copia ou limpa uma coleção.', 'dados = [1, 2]\ncopia = dados.copy()\ndados.clear()', 'lista dicionário conjunto'],
+            ['reverse()', 'Inverte a ordem dos elementos da própria lista.', 'numeros = [1, 2, 3]\nnumeros.reverse()', 'lista ordem'],
+            ['capitalize() / title() / casefold()', 'Altera a capitalização de um texto.', 'print("python é legal".capitalize(), "python".title())', 'string texto'],
+            ['find() / rfind()', 'Procura a posição de um trecho em um texto.', 'print("banana".find("na"), "banana".rfind("na"))', 'string busca'],
+            ['startswith() / endswith()', 'Verifica como um texto começa ou termina.', 'print("arquivo.py".endswith(".py"))', 'string texto'],
+            ['isalpha() / isdigit() / isalnum()', 'Verifica letras, dígitos ou caracteres alfanuméricos.', 'print("ABC".isalpha(), "123".isdigit(), "A1".isalnum())', 'string validação'],
+            ['update() / setdefault() / popitem()', 'Atualiza, define padrão ou remove um par do dicionário.', 'dados = {"nome": "Ana"}\ndados.setdefault("idade", 20)\ndados.update({"ativo": True})', 'dicionário atualizar'],
+            ['add() / discard() / union()', 'Adiciona itens ou combina conjuntos.', 'a = {1, 2}\na.add(3)\nprint(a.union({4, 5}))', 'set conjunto'],
+            ['read() / readline() / readlines()', 'Lê um arquivo completo ou por linhas.', 'with open("dados.txt", encoding="utf-8") as f:\n    conteudo = f.read()', 'arquivo leitura'],
+            ['write() / writelines()', 'Escreve texto ou várias linhas em um arquivo.', 'with open("dados.txt", "w", encoding="utf-8") as f:\n    f.write("Olá")', 'arquivo escrita']
+
+        ];
+
+        function getPythonOfficialDocUrl(name) {
+            const normalized = name.toLowerCase().replace(/\s+/g, '');
+            const builtinNames = ['abs','aiter','all','anext','any','ascii','bin','breakpoint','bytearray','bytes','callable','chr','classmethod','compile','complex','delattr','dict','dir','divmod','enumerate','eval','exec','filter','float','format','frozenset','getattr','globals','hasattr','hash','help','hex','id','input','int','isinstance','issubclass','iter','len','list','locals','map','max','memoryview','min','next','object','oct','open','ord','pow','print','property','range','repr','reversed','round','set','setattr','slice','sorted','staticmethod','str','sum','super','tuple','type','vars','zip','__import__'];
+            const keywordSections = {
+                'if/elif/else':'compound_stmts.html#if',
+                'for':'compound_stmts.html#the-for-statement',
+                'while':'compound_stmts.html#the-while-statement',
+                'try/except':'compound_stmts.html#the-try-statement',
+                'with':'compound_stmts.html#the-with-statement',
+                'with/open()':'compound_stmts.html#the-with-statement',
+                'match/case':'compound_stmts.html#the-match-statement',
+                'def/return':'compound_stmts.html#function-definitions',
+                'class':'compound_stmts.html#class-definitions',
+                'async/await':'compound_stmts.html#coroutines',
+                'yield/yieldfrom':'expressions.html#yield-expressions',
+                'assert':'simple_stmts.html#the-assert-statement',
+                'del':'simple_stmts.html#the-del-statement',
+                'global/nonlocal':'simple_stmts.html#the-global-statement',
+                'pass':'simple_stmts.html#the-pass-statement',
+                'raise':'simple_stmts.html#the-raise-statement',
+                'import':'simple_stmts.html#the-import-statement'
+            };
+            if (keywordSections[normalized]) return 'https://docs.python.org/3/reference/' + keywordSections[normalized];
+            const first = name.toLowerCase().match(/[a-z_][a-z_0-9]*/);
+            if (first && builtinNames.includes(first[0])) return 'https://docs.python.org/3/library/functions.html#' + first[0];
+            if (/append|extend|insert|remove|pop|sort|reverse|count|index|copy|clear/.test(normalized)) return 'https://docs.python.org/3/library/stdtypes.html#mutable-sequence-types';
+            if (/lower|upper|strip|replace|split|join|capitalize|title|casefold|find|startswith|endswith|isalpha|isdigit|isalnum/.test(normalized)) return 'https://docs.python.org/3/library/stdtypes.html#text-sequence-type-str';
+            if (/keys|values|items|get|update|setdefault|popitem/.test(normalized)) return 'https://docs.python.org/3/library/stdtypes.html#mapping-types-dict';
+            if (/and|or|not|in|is/.test(normalized) || /[=<>+*\/%&|^~]/.test(name)) return 'https://docs.python.org/3/reference/expressions.html#operator-precedence';
+            return 'https://docs.python.org/3/search.html?q=' + encodeURIComponent(name);
+        }
+
+        function searchPythonReference(inputId, resultsId) {
+            const input = document.getElementById(inputId), results = document.getElementById(resultsId);
+            if (!input || !results) return;
+            const term = input.value.trim().toLocaleLowerCase('pt-BR');
+            results.replaceChildren();
+            const matches = (Array.isArray(pythonReference) ? pythonReference : [])
+                .filter(item => Array.isArray(item) && item.length >= 3)
+                .filter(item => item.map(value => String(value ?? '')).join(' ').toLocaleLowerCase('pt-BR').includes(term))
+                .slice(0, 40);
+            if (!matches.length) {
+                const empty = document.createElement('p'); empty.className = 'text-sm text-gray-400';
+                empty.textContent = 'Nenhum comando encontrado. Tente outro termo.'; results.appendChild(empty); return;
+            }
+            matches.forEach(([name, description, example]) => {
+                const docUrl = getPythonOfficialDocUrl(name);
+                const card = document.createElement('article'); card.className = 'doc-result-card space-y-2';
+                const heading = document.createElement('h3'); heading.className = 'font-mono text-vscode-keyword font-semibold'; heading.textContent = name;
+                const body = document.createElement('p'); body.className = 'text-xs text-gray-300'; body.textContent = description;
+                const code = document.createElement('pre'); code.className = 'bg-vscode-terminal p-2 rounded text-xs text-green-300 font-mono whitespace-pre-wrap overflow-x-auto'; code.textContent = example;
+                const button = document.createElement('button'); button.type = 'button'; button.className = 'text-xs text-vscode-accent hover:underline'; button.textContent = 'Inserir exemplo no Editor';
+                button.addEventListener('click', () => copyDocSnippet(example));
+                const officialLink = document.createElement('a');
+                officialLink.href = docUrl;
+                officialLink.target = '_blank';
+                officialLink.rel = 'noopener noreferrer';
+                officialLink.className = 'text-xs text-vscode-accent hover:underline inline-flex items-center gap-1';
+                officialLink.textContent = 'Abrir documentação oficial deste recurso';
+                card.append(heading, body, code, button, officialLink); results.appendChild(card);
+            });
         }
         function filterDocs() { searchPythonReference('docs-search', 'docs-search-results'); }
 
@@ -2310,7 +2539,8 @@ function removeCurrentFile() {
     showNotification('Arquivo removido do projeto.');
 }
         // Initialize App on Page Load
-        window.onload = function() {
+        window.onload = async function() {
+            await initializeSessionFiles();
             if (!Object.prototype.hasOwnProperty.call(virtualFiles, currentFile)) currentFile = Object.keys(virtualFiles)[0] || 'main.py';
             if (!Object.prototype.hasOwnProperty.call(virtualFiles, currentFile)) virtualFiles[currentFile] = '';
             editorHasOpenFile = true;
@@ -2322,11 +2552,12 @@ function removeCurrentFile() {
             clearTerminal();
             updateLineNumbers();
             refreshFileExplorer();
-            addExtraDocs();
+            // Documentação extra já está integrada em pythonReference; não chamar função inexistente.
             initMonacoEditor();
             refreshBackendStatus();
             loadQuizQuestion();
             loadWriteChallenge();
+            filterDocs();
         };
     </script>
 
@@ -2370,6 +2601,10 @@ function removeCurrentFile() {
         throw new Error(data.detail || 'Não foi possível entrar.');
       }
 
+      // Um novo login cria um workspace novo no servidor; não restaura arquivos do login anterior.
+      try { sessionStorage.removeItem('pycode-studio-session-files-v3'); } catch (_) {}
+      if (typeof resetProjectToDefaults === 'function') resetProjectToDefaults();
+      if (typeof persistVirtualFilesNow === 'function') persistVirtualFilesNow();
       screen.style.display = 'none';
       password.value = '';
     } catch (error) {

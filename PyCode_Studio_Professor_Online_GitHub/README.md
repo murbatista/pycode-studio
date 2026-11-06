@@ -8,7 +8,7 @@ O PyCode Studio é acessado diretamente pelo endereço HTTPS do serviço no Rend
 2. No Render, escolha **New → Blueprint** e selecione o repositório que contém `render.yaml`.
 3. Confirme a criação do serviço `pycode-studio` e aguarde o estado `Live`.
 4. No serviço, abra **Environment** e configure `GEMINI_API_KEY` com a chave criada no Google AI Studio. Não coloque essa chave no HTML nem no GitHub.
-5. Confira `GEMINI_MODEL`. O padrão deste projeto é `gemini-3.8-flash`.
+5. Confira `GEMINI_MODEL`. O padrão definido no Blueprint é `gemini-3.8-flash`. A disponibilidade do modelo e os limites gratuitos são controlados pelo Google e podem variar.
 6. Confira `PYCODE_ACCESS_PASSWORD`. O Blueprint gera uma senha; você pode definir uma senha própria e compartilhá-la apenas com quem deve acessar o editor.
 7. Abra a URL HTTPS `https://...onrender.com`. O acesso é feito pelo navegador.
 
@@ -23,14 +23,14 @@ O `render.yaml` configura automaticamente `PYCODE_SESSION_SECRET` e `PYCODE_HTTP
 - Criação de arquivos e pastas com caminhos como `funcoes/calculos.py`.
 - Abas de arquivos e árvore de pastas expansível.
 - Baixar o arquivo atual, importar arquivos de texto/código e exportar/importar o projeto completo em JSON.
-- Cópia local de segurança do projeto no armazenamento do navegador, com gravação com atraso para evitar salvar todo o projeto a cada tecla.
+- Arquivos mantidos durante a sessão atual do navegador e recuperados ao atualizar a página, enquanto a mesma instância do servidor continuar ativa.
 
 ## Como salvar e transportar projetos
 
 - **Baixar arquivo atual:** baixa o arquivo selecionado para o computador.
 - **Exportar projeto completo:** baixa um JSON com todos os arquivos e caminhos de pastas.
 - **Importar projeto:** selecione um JSON exportado pelo PyCode Studio para restaurar o conjunto de arquivos.
-- O navegador também mantém uma cópia do projeto em `localStorage`. Essa cópia pertence àquele navegador e àquele dispositivo.
+- O navegador mantém uma cópia temporária em `sessionStorage`, vinculada ao identificador de inicialização do servidor.
 
 ### Atenção ao armazenamento no Render
 
