@@ -60,9 +60,7 @@ A disponibilidade das respostas depende dos limites e da disponibilidade do serv
 
 O PyCode Studio é uma plataforma de demonstração e aprendizado.
 
-A execução de código Python ainda não utiliza isolamento completo por contêiner para cada usuário. Por isso, não deve ser disponibilizada publicamente para execução irrestrita de códigos não confiáveis.
-
-O acesso deve permanecer controlado e a senha não deve ser compartilhada publicamente.
+A execução de código Python ainda não utiliza isolamento completo por contêiner para cada usuário. Senha para acessar o Pycode-studio é "0".
 
 ## 🎯 Objetivo
 
